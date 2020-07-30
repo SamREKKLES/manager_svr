@@ -1,5 +1,7 @@
 import os
-from flask import Flask, jsonify, request, send_from_directory, render_template
+from datetime import time
+
+from flask import Flask, jsonify, request
 from flask_cors import CORS, cross_origin
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import login_user, logout_user, login_required, LoginManager, current_user, UserMixin
@@ -13,14 +15,7 @@ import uuid
 # todo 单点登陆 保证manager和model能够同时校验通过 或 在model添加自定义校验
 
 app = Flask(__name__)
-APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = os.path.join(APP_ROOT, 'uploads')
-RESULT_FOLDER = os.path.join(APP_ROOT, 'results')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(RESULT_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['RESULT_FOLDER'] = RESULT_FOLDER
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///manager.db' + '?check_same_thread=False'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///manager.db' + '?check_same_thread=False'  # todo 待修改
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 app.config['WTF_CSRF_ENABLED'] = False
 db = SQLAlchemy(app)
@@ -36,7 +31,66 @@ CSRFProtect(app)
 CORS(app, supports_credentials=True, resources={r'/*': {'origins': '*'}})
 
 
-# Patient 病人
+class CTImg(db.Model):
+    __tablename__ = 'ctimgs'
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(120), unique=True)
+    uploadname = db.Column(db.String(120), unique=False)
+    time = db.Column(db.String(10), unique=False)
+    type = db.Column(db.String(10), unique=False)
+    patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'))
+    patient = db.relationship('Patient', backref=db.backref('ctimgs', lazy='dynamic'))
+    doctor_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    docter = db.relationship('User', backref=db.backref('ctimgs', lazy='dynamic'))
+
+    def __init__(self, filename, uploadname, img_type, patient, doctor, cttime=None):
+        self.filename = filename
+        if cttime is None:
+            cttime = time.time()
+        self.time = cttime
+        self.type = img_type
+        self.patient = patient
+        self.uploadname = uploadname
+        self.docter = doctor
+
+    def __repr__(self):
+        return '<DWI %r>' % self.filename
+
+
+class Result(db.Model):
+    __tablename__ = 'results'
+    id = db.Column(db.Integer, primary_key=True)
+    filename1 = db.Column(db.String(120), unique=True)
+    filename2 = db.Column(db.String(120), unique=True)
+    time = db.Column(db.String(10), unique=False)
+    modelType = db.Column(db.Integer)
+    dwi_name = db.Column(db.String(120), unique=False)
+    adc_name = db.Column(db.String(120), unique=False)
+    info = db.Column(db.Float, unique=False)
+    patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'))
+    patient = db.relationship('Patient', backref=db.backref('results', lazy='dynamic'))
+    doctor_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    docter = db.relationship('User', backref=db.backref('results', lazy='dynamic'))
+    realimg = db.Column(db.String(120), unique=True)
+    roi = db.Column(db.String(120), unique=True)
+
+    def __init__(self, filename1, filename2, modelType, patient, doctor, dwi_name, adc_name, info, cttime=None):
+        self.filename1 = filename1
+        self.filename2 = filename2
+        if cttime is None:
+            cttime = time.time()
+        self.time = cttime
+        self.modelType = modelType
+        self.patient = patient
+        self.docter = doctor
+        self.dwi_name = dwi_name
+        self.adc_name = adc_name
+        self.info = info
+
+    def __repr__(self):
+        return '<DWI %r>' % self.filename
+
+
 class Patient(db.Model):
     __tablename__ = 'patients'
     id = db.Column(db.Integer, primary_key=True)
@@ -185,7 +239,7 @@ def logout():
     return jsonify({'status': 'success'})
 
 
-def _getUserName():
+def _get_username():
     doctor = _get_current_user()
     if doctor:
         return doctor.realname, doctor.id
@@ -196,9 +250,9 @@ def _getUserName():
 @app.route('/api/getUser', methods=['GET'])
 @login_required
 @cross_origin()
-def getUser():
+def get_user():
     response_object = {'status': 'success'}
-    username, id = _getUserName()
+    username, id = _get_username()
     if not username:
         response_object['status'] = 'fail'
     else:
@@ -207,14 +261,14 @@ def getUser():
     return jsonify(response_object)
 
 
-def _addPatient(name, sex, age, info):
+def _add_patient(name, sex, age, info):
     doctor = _get_current_user()
     patient = Patient(name, doctor, age, sex, info)
     db.session.add(patient)
     db.session.commit()
 
 
-def _getPatients():
+def _get_patients():
     def to_dict(patients):
         res = []
         for p in patients:
@@ -237,7 +291,7 @@ def _getPatients():
         return to_dict1(patients)
 
 
-def _getPatient(id):
+def _get_patient(id):
     def to_dict(p):
         return {'id': p.id, "name": p.username, "sex": "男" if p.sex == 1 else "女", "info": p.info, "age": p.age}
 
@@ -249,7 +303,7 @@ def _getPatient(id):
         return None
 
 
-def _delPatient(id):
+def _del_patient(id):
     user = Patient.query.filter_by(id=id).first()
     if not user:
         return False
@@ -267,14 +321,14 @@ def _delPatient(id):
 @app.route('/api/addPatient', methods=['POST'])
 @login_required
 @cross_origin()
-def addPatient():
+def add_patient():
     response_object = {'status': 'success'}
     json = request.get_json()
     name = json['name']
     sex = json['sex']
     age = json['age']
     info = json['desc']
-    _addPatient(name, sex, age, info)
+    _add_patient(name, sex, age, info)
     return jsonify(response_object)
 
 
@@ -282,8 +336,8 @@ def addPatient():
 @app.route('/api/getPatients', methods=['GET'])
 @login_required
 @cross_origin()
-def getPatients():
-    patients = _getPatients()
+def get_patients():
+    patients = _get_patients()
     response_object = {'status': 'success', 'patients': patients}
     return jsonify(response_object)
 
@@ -292,11 +346,11 @@ def getPatients():
 @app.route('/api/getPatient', methods=['POST'])
 @login_required
 @cross_origin()
-def getPatient():
+def get_patient():
     response_object = {'status': 'success'}
     json = request.get_json()
     id = json['id']
-    patient = _getPatient(id)
+    patient = _get_patient(id)
     if patient:
         response_object['patient'] = patient
     else:
@@ -308,15 +362,65 @@ def getPatient():
 @app.route('/api/delPatient', methods=['POST'])
 @login_required
 @cross_origin()
-def delPatient():
+def del_patient():
     response_object = {'status': 'success'}
     patient = request.get_json()['patient']
-    if not _delPatient(patient):
+    if not _del_patient(patient):
         response_object['status'] = 'fail'
     return jsonify(response_object)
 
 
-def _updateDesc(id, info):
+# _get_img_list 获取imgList
+def _get_img_list(id):
+    res = []
+    img_list = Patient.query.filter_by(id=id).first().ctimgs.order_by("time").all()
+    for item in img_list:
+        res.append(
+            {
+                "uploadname": item.uploadname,
+                "time": time.strftime("%Y%m%d", time.localtime(int(item.time))),
+                "type": item.type,
+                "filename": item.filename,
+                "disabled": False
+            }
+        )
+    return res
+
+
+# get_detail 获取病人信息
+@app.route('/api/getDetail', methods=['POST'])
+@login_required
+@cross_origin()
+def get_detail():
+    response_object = {'status': 'success'}
+    json = request.get_json()
+    id = json['id']
+    patient = _get_patient(id)
+    if patient:
+        response_object['patient'] = patient
+    else:
+        response_object['status'] = "fail"
+        return jsonify(response_object)
+    img_list = _get_img_list(id)
+    response_object['imgs'] = img_list
+    return jsonify(response_object)
+
+
+# get_img_list 获取图像信息
+@app.route('/api/imgList', methods=['POST'])
+@login_required
+@cross_origin()
+def get_img_list():
+    response_object = {'status': 'success'}
+    patient = request.get_json()['patient']
+    if not patient:
+        return response_object
+    img_list = _get_img_list(patient)
+    response_object['imgs'] = img_list
+    return jsonify(response_object)
+
+# _update_desc 更新信息
+def _update_desc(id, info):
     patient = Patient.query.filter_by(id=id).first()
     if not patient:
         return False
@@ -329,12 +433,12 @@ def _updateDesc(id, info):
 @app.route('/api/updateDesc', methods=['POST'])
 @login_required
 @cross_origin()
-def updateDesc():
+def update_desc():
     response_object = {'status': 'success'}
     json = request.get_json()
     id = json['id']
     info = json['desc']
-    if not _updateDesc(id, info):
+    if not _update_desc(id, info):
         response_object['status'] = 'fail'
     return jsonify(response_object)
 
@@ -368,7 +472,7 @@ def statistics():
 @app.route('/api/userDetail', methods=['POST'])
 @login_required
 @cross_origin()
-def userDetail():
+def user_detail():
     response_object = {'status': 'success'}
     id = request.get_json()['id']
     user = User.query.filter_by(id=id).first()
@@ -381,11 +485,11 @@ def userDetail():
     return jsonify(response_object)
 
 
-# updateRole 更新用户权限 todo 接口有更改
+# updateRole 更新用户权限
 @app.route('/api/updateRole', methods=['POST'])
 @login_required
 @cross_origin()
-def updateRole():
+def update_role():
     response_object = {'status': 'success'}
     doctor = _get_current_user()
     if doctor.userType != 1:

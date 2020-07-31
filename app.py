@@ -46,7 +46,7 @@ class CTImg(db.Model):
     def __init__(self, filename, uploadname, img_type, patient, doctor, cttime=None):
         self.filename = filename
         if cttime is None:
-            cttime = time.time()
+            cttime = time.asctime(time.time())
         self.time = cttime
         self.type = img_type
         self.patient = patient

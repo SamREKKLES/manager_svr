@@ -1,29 +1,26 @@
 import os
 from datetime import time
-
-from flask import Flask, jsonify, request
+from auths import *
+from flask import Flask, request, session
 from flask_cors import CORS, cross_origin
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import login_user, logout_user, login_required, LoginManager, current_user, UserMixin
+from sqlalchemy import null
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField
+from wtforms import StringField, PasswordField
 from wtforms.validators import ValidationError, Length
 from flask_wtf import CSRFProtect
 import uuid
+from common import successReturn, failReturn, SQLALCHEMY_DATABASE_URI
 
 # todo 单点登陆 保证manager和model能够同时校验通过 或 在model添加自定义校验
-
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///manager.db' + '?check_same_thread=False'  # todo 待修改
+app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 app.config['WTF_CSRF_ENABLED'] = False
 db = SQLAlchemy(app)
 
 app.secret_key = os.urandom(24)
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
-login_manager.init_app(app=app)
 
 CSRFProtect(app)
 
@@ -34,20 +31,17 @@ CORS(app, supports_credentials=True, resources={r'/*': {'origins': '*'}})
 class CTImg(db.Model):
     __tablename__ = 'ctimgs'
     id = db.Column(db.Integer, primary_key=True)
-    filename = db.Column(db.String(120), unique=True)
-    uploadname = db.Column(db.String(120), unique=False)
-    time = db.Column(db.String(10), unique=False)
-    type = db.Column(db.String(10), unique=False)
+    filename = db.Column(db.String(255), unique=True)
+    uploadname = db.Column(db.String(255), unique=False)
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+    type = db.Column(db.String(255), unique=False)
     patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'))
     patient = db.relationship('Patient', backref=db.backref('ctimgs', lazy='dynamic'))
     doctor_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     docter = db.relationship('User', backref=db.backref('ctimgs', lazy='dynamic'))
 
-    def __init__(self, filename, uploadname, img_type, patient, doctor, cttime=None):
+    def __init__(self, filename, uploadname, img_type, patient, doctor):
         self.filename = filename
-        if cttime is None:
-            cttime = time.asctime(time.time())
-        self.time = cttime
         self.type = img_type
         self.patient = patient
         self.uploadname = uploadname
@@ -60,26 +54,23 @@ class CTImg(db.Model):
 class Result(db.Model):
     __tablename__ = 'results'
     id = db.Column(db.Integer, primary_key=True)
-    filename1 = db.Column(db.String(120), unique=True)
-    filename2 = db.Column(db.String(120), unique=True)
-    time = db.Column(db.String(10), unique=False)
-    modelType = db.Column(db.Integer)
-    dwi_name = db.Column(db.String(120), unique=False)
-    adc_name = db.Column(db.String(120), unique=False)
-    info = db.Column(db.Float, unique=False)
+    filename1 = db.Column(db.String(255), unique=True)
+    filename2 = db.Column(db.String(255), unique=True)
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+    modelType = db.Column(db.String(255), unique=True)
+    dwi_name = db.Column(db.String(255), unique=False)
+    adc_name = db.Column(db.String(255), unique=False)
+    info = db.Column(db.String(255), unique=False)
     patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'))
     patient = db.relationship('Patient', backref=db.backref('results', lazy='dynamic'))
     doctor_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     docter = db.relationship('User', backref=db.backref('results', lazy='dynamic'))
-    realimg = db.Column(db.String(120), unique=True)
-    roi = db.Column(db.String(120), unique=True)
+    realimg = db.Column(db.String(255), unique=True)
+    roi = db.Column(db.String(255), unique=True)
 
-    def __init__(self, filename1, filename2, modelType, patient, doctor, dwi_name, adc_name, info, cttime=None):
+    def __init__(self, filename1, filename2, modelType, patient, doctor, dwi_name, adc_name, info):
         self.filename1 = filename1
         self.filename2 = filename2
-        if cttime is None:
-            cttime = time.time()
-        self.time = cttime
         self.modelType = modelType
         self.patient = patient
         self.docter = doctor
@@ -94,31 +85,34 @@ class Result(db.Model):
 class Patient(db.Model):
     __tablename__ = 'patients'
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80))
+    username = db.Column(db.String(255), unique=True)
     age = db.Column(db.Integer)
     sex = db.Column(db.Integer)
-    info = db.Column(db.String)
+    info = db.Column(db.String(255))
+    result = db.Column(db.String(255))
+    timestamp = db.Column(db.DateTime, default=datetime.now)
     doctor_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     docter = db.relationship('User', backref=db.backref('patients', lazy='dynamic'))
 
-    def __init__(self, username, doctor, age, sex, info):
+    def __init__(self, username, doctor, age, sex, info, result):
         self.username = username
         self.docter = doctor
         self.age = age
         self.sex = sex
         self.info = info
+        self.result = result
 
     def __repr__(self):
         return '<Patient %r>' % self.username
 
 
 # User==Doctor
-class User(db.Model, UserMixin):
+class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(64), unique=True)
-    password = db.Column(db.String(200))
-    realname = db.Column(db.String(128), unique=False)
+    username = db.Column(db.String(255), unique=True)
+    password = db.Column(db.String(255))
+    realname = db.Column(db.String(255), unique=False)
     userType = db.Column(db.Integer)
 
     def __init__(self, username, password, realname, userType=1):
@@ -135,30 +129,17 @@ class User(db.Model, UserMixin):
         return {'id': self.id, 'username': self.username,
                 'realname': self.realname, 'usertype': self.userType}
 
-    @property
-    def is_authenticated(self):
-        return True
-
-    @property
-    def is_active(self):
-        return True
-
-    @property
-    def is_anonymous(self):
-        return False
-
     def get_id(self):
         return str(self.id)
 
     def __repr__(self):
-        return '<User %r>' % (self.username)
+        return '<User %r>' % self.username
 
 
 # LoginForm 登陆表单
 class LoginForm(FlaskForm):
     username = StringField('Username', validators=[Length(max=64)])
     password = PasswordField('Password', validators=[Length(6, 16)])
-    remember = BooleanField('Remember Me')
 
     def validate_username(self, field):
         if not self.get_user():
@@ -178,7 +159,7 @@ class LoginForm(FlaskForm):
 class RegisterForm(FlaskForm):
     username = StringField('Username', validators=[Length(max=64)])
     password = PasswordField('Password', validators=[Length(1, 16)])
-    confirm = PasswordField('Confirm Password')
+    realname = StringField('Realname', validators=[Length(max=64)])
 
     def validate_username(self, field):
         if User.query.filter_by(username=field.data).count() > 0:
@@ -190,85 +171,129 @@ db.create_all()
 FILE_LIST = []
 
 
-# load_user 加载当前登陆用户验证
-@login_manager.user_loader
-def load_user(userid):
-    return User.query.get(int(userid))
-
-
 def _get_current_user():
-    return load_user(current_user.id)
+    """
+    获取当前用户
+    :return:
+    """
+    currentName = session["user_name"]
+    if currentName:
+        return User.query.filter_by(username=currentName).first()
+    return null
 
 
-# login 用户登录
-@app.route('/api/login', methods=['POST', 'GET'])
+@app.route('/api/login', methods=['POST', "GET"])
 @cross_origin()
 def login():
-    if current_user.is_authenticated:
-        return jsonify({'status': 'success'})
+    """
+    用户登录
+    :return: json
+    """
     user_data = request.get_json()
     form = LoginForm(data=user_data)
     if form.validate_on_submit():
         user = form.get_user()
-        login_user(user, remember=True)
-        return jsonify({'status': 'success', 'user': user.to_json()})
-    return jsonify({'status': 'fail'})
+        access_token = generate_access_token(user_name=user.username)
+        refresh_token = generate_refresh_token(user_name=user.username)
+        data = {"access_token": access_token.decode("utf-8"),
+                "refresh_token": refresh_token.decode("utf-8")}
+        return successReturn(data, "登陆成功")
+    return failReturn("", "用户名或密码错误")
 
 
-# register 注册用户
 @app.route('/api/register', methods=['POST'])
 @cross_origin()
 def register():
+    """
+    用户注册
+    :return: json
+    """
     user_data = request.get_json()
     form = RegisterForm(data=user_data)
     if form.validate():
-        user = User(username=user_data['username'], password=user_data['password'],
-                    realname=user_data['realname'], userType=user_data['userType'])
+        user = User(username=user_data['username'], password=user_data['password'], realname=user_data['realname'])
         db.session.add(user)
         db.session.commit()
-        return jsonify({'status': 'success'})
-    return jsonify({'status': 'error', 'message': form.errors}), 400
+        return successReturn("", "注册成功")
+    return failReturn(form.errors, "注册失败")
 
 
-# logout 退出登录
+@app.route('/api/refreshToken', methods=["GET"])
+def refresh_token():
+    """
+    刷新token，获取新的数据获取token, 当前jwt过期后可请求refresh
+    :return:
+    """
+    user_data = request.get_json()
+    refresh_token = user_data['refresh_token']
+    if not refresh_token:
+        return failReturn("", "参数错误")
+    payload = decode_auth_token(refresh_token)
+    if not payload:
+        return failReturn("", "请登陆")
+    if "user_name" not in payload:
+        return failReturn("", "请登陆")
+    access_token = generate_access_token(user_name=payload["user_name"])
+    data = {"access_token": access_token.decode("utf-8"), "refresh_token": refresh_token}
+    return successReturn(data, "刷新成功")
+
+
 @app.route("/api/logout", methods=['GET'])
 @login_required
 @cross_origin()
 def logout():
-    logout_user()
-    return jsonify({'status': 'success'})
+    """
+    用户退出, todo：目前把工作交给前端，可以考虑加一个黑名单记录已删除token！！！
+    :return: json
+    """
+    session.clear()
+    return successReturn("", "退出登陆")
 
 
 def _get_username():
+    """
+    获取当前用户名和id
+    :return: realname, id
+    """
     doctor = _get_current_user()
     if doctor:
         return doctor.realname, doctor.id
     return False
 
 
-# getUser 获取当前用户
 @app.route('/api/getUser', methods=['GET'])
 @login_required
 @cross_origin()
 def get_user():
-    response_object = {'status': 'success'}
+    """
+    获取用户信息
+    :return: json
+    """
     username, id = _get_username()
     if not username:
-        response_object['status'] = 'fail'
-    else:
-        response_object['username'] = username
-        response_object['id'] = id
-    return jsonify(response_object)
+        return failReturn("", "获取信息失败")
+    return successReturn({"username": username, "id": id}, '获取信息成功')
 
 
-def _add_patient(name, sex, age, info):
+def _add_patient(name, sex, age, info, result):
+    """
+    添加病人
+    :param name:
+    :param sex:
+    :param age:
+    :param info:
+    """
     doctor = _get_current_user()
-    patient = Patient(name, doctor, age, sex, info)
+    patient = Patient(name, doctor, age, sex, info, result)
     db.session.add(patient)
     db.session.commit()
 
 
 def _get_patients():
+    """
+    获取病人列表
+    :return: patients
+    """
     def to_dict(patients):
         res = []
         for p in patients:
@@ -292,6 +317,11 @@ def _get_patients():
 
 
 def _get_patient(id):
+    """
+    通过id获取病人
+    :param id:
+    :return: patient
+    """
     def to_dict(p):
         return {'id': p.id, "name": p.username, "sex": "男" if p.sex == 1 else "女", "info": p.info, "age": p.age}
 
@@ -304,6 +334,11 @@ def _get_patient(id):
 
 
 def _del_patient(id):
+    """
+    删除病人
+    :param id:
+    :return: boolean
+    """
     user = Patient.query.filter_by(id=id).first()
     if not user:
         return False
@@ -317,61 +352,74 @@ def _del_patient(id):
     return True
 
 
-# addPatient 添加病人
 @app.route('/api/addPatient', methods=['POST'])
 @login_required
 @cross_origin()
 def add_patient():
-    response_object = {'status': 'success'}
+    """
+    添加病人
+    :return: json
+    """
     json = request.get_json()
     name = json['name']
     sex = json['sex']
     age = json['age']
     info = json['desc']
-    _add_patient(name, sex, age, info)
-    return jsonify(response_object)
+    result = json['result']
+    _add_patient(name, sex, age, info, result)
+    return successReturn("", "成功添加病人")
 
 
-# getPatients 获取病人列表
 @app.route('/api/getPatients', methods=['GET'])
 @login_required
 @cross_origin()
 def get_patients():
+    """
+    获取病人列表
+    :return: json
+    """
     patients = _get_patients()
-    response_object = {'status': 'success', 'patients': patients}
-    return jsonify(response_object)
+    response_object = {'patients': patients}
+    return successReturn(response_object, "获取病人列表成功")
 
 
-# getPatient 根据id获取病人
 @app.route('/api/getPatient', methods=['POST'])
 @login_required
 @cross_origin()
 def get_patient():
-    response_object = {'status': 'success'}
+    """
+    根据id获取病人
+    :return: json
+    """
     json = request.get_json()
     id = json['id']
     patient = _get_patient(id)
-    if patient:
-        response_object['patient'] = patient
-    else:
-        response_object['status'] = "fail"
-    return jsonify(response_object)
+    if not patient:
+        return failReturn("", "获取病人失败")
+    response_object = {'patient': patient}
+    return successReturn(response_object, "获取病人成功")
 
 
-# delPatient 删除病人
 @app.route('/api/delPatient', methods=['POST'])
 @login_required
 @cross_origin()
 def del_patient():
-    response_object = {'status': 'success'}
+    """
+    删除病人
+    :return: json
+    """
     patient = request.get_json()['patient']
     if not _del_patient(patient):
-        response_object['status'] = 'fail'
-    return jsonify(response_object)
+        return failReturn("", "删除失败")
+    return successReturn("", "删除成功")
 
 
-# _get_img_list 获取imgList
 def _get_img_list(id):
+    """
+    获取imgList
+    :param id:
+    :return: res
+    """
     res = []
     img_list = Patient.query.filter_by(id=id).first().ctimgs.order_by("time").all()
     for item in img_list:
@@ -387,40 +435,47 @@ def _get_img_list(id):
     return res
 
 
-# get_detail 获取病人信息
 @app.route('/api/getDetail', methods=['POST'])
 @login_required
 @cross_origin()
 def get_detail():
-    response_object = {'status': 'success'}
+    """
+    获取病人详细信息
+    :return: json
+    """
     json = request.get_json()
     id = json['id']
     patient = _get_patient(id)
-    if patient:
-        response_object['patient'] = patient
-    else:
-        response_object['status'] = "fail"
-        return jsonify(response_object)
+    if not patient:
+        return failReturn("", "获取病人信息失败")
     img_list = _get_img_list(id)
-    response_object['imgs'] = img_list
-    return jsonify(response_object)
+    response_object = {'patient': patient, 'imgs': img_list}
+    return successReturn(response_object, "获取病人信息成功")
 
 
-# get_img_list 获取图像信息
 @app.route('/api/imgList', methods=['POST'])
 @login_required
 @cross_origin()
 def get_img_list():
-    response_object = {'status': 'success'}
+    """
+    获取图像信息
+    :return: json
+    """
     patient = request.get_json()['patient']
     if not patient:
-        return response_object
+        return failReturn("", "获取图像列表失败")
     img_list = _get_img_list(patient)
-    response_object['imgs'] = img_list
-    return jsonify(response_object)
+    response_object = {'imgs': img_list}
+    return successReturn(response_object, "获取图像列表成功")
 
-# _update_desc 更新信息
+
 def _update_desc(id, info):
+    """
+    更新信息
+    :param id:
+    :param info:
+    :return: boolean
+    """
     patient = Patient.query.filter_by(id=id).first()
     if not patient:
         return False
@@ -429,21 +484,27 @@ def _update_desc(id, info):
     return True
 
 
-# updateDesc 更新用户信息
 @app.route('/api/updateDesc', methods=['POST'])
 @login_required
 @cross_origin()
 def update_desc():
-    response_object = {'status': 'success'}
+    """
+    更新用户信息
+    :return: json
+    """
     json = request.get_json()
     id = json['id']
     info = json['desc']
     if not _update_desc(id, info):
-        response_object['status'] = 'fail'
-    return jsonify(response_object)
+        return failReturn("", "更新失败")
+    return successReturn("", "更新成功")
 
 
 def _statistics():
+    """
+    获取医生信息，根据当前权限
+    :return: res
+    """
     doctor = _get_current_user()
     if doctor.userType != 1:
         return None
@@ -455,66 +516,69 @@ def _statistics():
     return res
 
 
-# statistics 获取用户列表
 @app.route('/api/statistics', methods=['GET'])
 @login_required
 @cross_origin()
 def statistics():
-    response_object = {'status': 'success'}
+    """
+    获取用户列表
+    :return: json
+    """
     res = _statistics()
     if not res:
-        response_object['status'] = 'fail'
-    response_object['res'] = res
-    return jsonify(response_object)
+        return failReturn("", "权限不足")
+    response_object = {'res': res}
+    return successReturn(response_object, "获取用户列表成功")
 
 
-# userDetail 用户详细信息 todo 接口有更改
 @app.route('/api/userDetail', methods=['POST'])
 @login_required
 @cross_origin()
 def user_detail():
-    response_object = {'status': 'success'}
+    """
+    获取用户详细信息
+    :return: json
+    """
     id = request.get_json()['id']
     user = User.query.filter_by(id=id).first()
     if not user:
-        response_object['status'] = 'fail'
-        return jsonify(response_object)
-    response_object['name'] = user.username
-    response_object['realname'] = user.realname
-    response_object['role'] = str(user.userType)
-    return jsonify(response_object)
+        return failReturn("", "用户不存在")
+    response_object = {'name': user.username, 'realname': user.realname, 'role': str(user.userType)}
+    return successReturn(response_object, "获取用户详细信息成功")
 
 
-# updateRole 更新用户权限
 @app.route('/api/updateRole', methods=['POST'])
 @login_required
 @cross_origin()
 def update_role():
-    response_object = {'status': 'success'}
+    """
+    更新用户权限
+    :return: json
+    """
     doctor = _get_current_user()
     if doctor.userType != 1:
-        response_object['status'] = 'fail'
-        return jsonify(response_object)
+        return failReturn("", "权限不足")
     id = request.get_json()['id']
     role = request.get_json()['role']
     user = User.query.filter_by(id=id).first()
     if not user:
-        response_object['status'] = 'fail'
-        return jsonify(response_object)
+        return failReturn("", "用户不存在")
     user.userType = int(role)
     db.session.commit()
-    return jsonify(response_object)
+    return successReturn("", "更新权限成功")
 
 
-# series 生成随机uuid
 @app.route('/api/series', methods=['GET'])
 @cross_origin()
 def series():
-    response_object = {'status': 'success'}
+    """
+    生成随机uuid
+    :return:
+    """
     node = uuid.getnode()
     mac = uuid.UUID(int=node).hex[-12:]
-    response_object['mac'] = mac
-    return jsonify(response_object)
+    response_object = {'mac': mac}
+    return successReturn(response_object, "生成随机uuid")
 
 
 if __name__ == '__main__':
@@ -524,4 +588,4 @@ if __name__ == '__main__':
 
 
     app.after_request(after_request)
-    app.run(debug=True, threaded=True, host='0.0.0.0', port=5050)
+    app.run(debug=True, threaded=True, host='127.0.0.1', port=5050)

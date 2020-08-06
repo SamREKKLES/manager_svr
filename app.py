@@ -57,7 +57,7 @@ class Result(db.Model):
     filename1 = db.Column(db.String(255), unique=True)
     filename2 = db.Column(db.String(255), unique=True)
     timestamp = db.Column(db.DateTime, default=datetime.now)
-    modelType = db.Column(db.String(255), unique=True)
+    modeltype = db.Column(db.String(255), unique=True)
     dwi_name = db.Column(db.String(255), unique=False)
     adc_name = db.Column(db.String(255), unique=False)
     info = db.Column(db.String(255), unique=False)
@@ -68,10 +68,10 @@ class Result(db.Model):
     realimg = db.Column(db.String(255), unique=True)
     roi = db.Column(db.String(255), unique=True)
 
-    def __init__(self, filename1, filename2, modelType, patient, doctor, dwi_name, adc_name, info):
+    def __init__(self, filename1, filename2, modeltype, patient, doctor, dwi_name, adc_name, info):
         self.filename1 = filename1
         self.filename2 = filename2
-        self.modelType = modelType
+        self.modeltype = modeltype
         self.patient = patient
         self.docter = doctor
         self.dwi_name = dwi_name
@@ -115,7 +115,7 @@ class User(db.Model):
     realname = db.Column(db.String(255), unique=False)
     userType = db.Column(db.Integer)
 
-    def __init__(self, username, password, realname, userType=1):
+    def __init__(self, username, password, realname, userType=2):
         password = generate_password_hash(password)
         self.username = username
         self.password = password

@@ -1,5 +1,8 @@
 import os
 from datetime import time
+
+from flasgger import Swagger
+
 from auths import *
 from flask import Flask, request, session
 from flask_cors import CORS, cross_origin
@@ -18,6 +21,7 @@ app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 app.config['WTF_CSRF_ENABLED'] = False
+Swagger(app)
 db = SQLAlchemy(app)
 
 app.secret_key = os.urandom(24)
@@ -188,6 +192,26 @@ def login():
     """
     用户登录
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: username
+        in: query
+        schema:
+            type: string
+        required: true
+        description: username
+      - name: password
+        in: query
+        schema:
+            type: string
+        description: password
+    responses:
+      500:
+        description: 用户名或密码错误
+      200:
+        description: 登陆成功
     """
     user_data = request.get_json()
     form = LoginForm(data=user_data)
@@ -207,6 +231,28 @@ def register():
     """
     用户注册
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: username
+        in: query
+        type: string
+        required: true
+        description: username
+      - name: password
+        in: query
+        type: string
+        description: password
+      - name: realname
+        in: query
+        type: string
+        description: realname
+    responses:
+      500:
+        description: 注册失败
+      200:
+        description: 注册成功
     """
     user_data = request.get_json()
     form = RegisterForm(data=user_data)
@@ -223,6 +269,14 @@ def refresh_token():
     """
     刷新token，获取新的数据获取token, 当前jwt过期后可请求refresh
     :return:
+    ---
+    tags:
+      - Manager API
+    responses:
+      500:
+        description: 注册失败
+      200:
+        description: 注册成功
     """
     user_data = request.get_json()
     refresh_token = user_data['refresh_token']
@@ -245,6 +299,18 @@ def logout():
     """
     用户退出, todo：目前把工作交给前端，可以考虑加一个黑名单记录已删除token！！！
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      200:
+        description: 退出登陆
     """
     session.clear()
     return successReturn("", "退出登陆")
@@ -268,6 +334,20 @@ def get_user():
     """
     获取用户信息
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      500:
+        description: 注册失败
+      200:
+        description: 注册成功
     """
     username, id = _get_username()
     if not username:
@@ -359,6 +439,41 @@ def add_patient():
     """
     添加病人
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: name
+        in: query
+        type: string
+        required: true
+        description: name
+      - name: sex
+        in: query
+        type: integer
+        description: 0为男 1为女
+      - name: age
+        in: query
+        type: integer
+        description: age
+      - name: desc
+        in: query
+        type: string
+        description: desc
+      - name: result
+        in: query
+        type: string
+        description: result
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      500:
+        description: 添加病人失败
+      200:
+        description: 成加病人成功
     """
     json = request.get_json()
     name = json['name']
@@ -377,6 +492,20 @@ def get_patients():
     """
     获取病人列表
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      500:
+        description: 获取病人列表失败
+      200:
+        description: 获取病人列表成功
     """
     patients = _get_patients()
     response_object = {'patients': patients}
@@ -390,10 +519,29 @@ def get_patient():
     """
     根据id获取病人
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: patientID
+        in: query
+        type: integer
+        required: true
+        description: patientID
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      500:
+        description: 获取病人失败
+      200:
+        description: 获取病人成功
     """
     json = request.get_json()
-    id = json['id']
-    patient = _get_patient(id)
+    patientID = json['patientID']
+    patient = _get_patient(patientID)
     if not patient:
         return failReturn("", "获取病人失败")
     response_object = {'patient': patient}
@@ -407,9 +555,28 @@ def del_patient():
     """
     删除病人
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: patientID
+        in: query
+        type: integer
+        required: true
+        description: patientID
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      500:
+        description: 删除失败
+      200:
+        description: 删除成功
     """
-    patient = request.get_json()['patient']
-    if not _del_patient(patient):
+    patientID = request.get_json()['patientID']
+    if not _del_patient(patientID):
         return failReturn("", "删除失败")
     return successReturn("", "删除成功")
 
@@ -442,10 +609,29 @@ def get_detail():
     """
     获取病人详细信息
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: patientID
+        in: query
+        type: integer
+        required: true
+        description: patientID
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      500:
+        description: 获取病人信息失败
+      200:
+        description: 获取病人信息成功
     """
     json = request.get_json()
-    id = json['id']
-    patient = _get_patient(id)
+    patientID = json['patientID']
+    patient = _get_patient(patientID)
     if not patient:
         return failReturn("", "获取病人信息失败")
     img_list = _get_img_list(id)
@@ -460,11 +646,30 @@ def get_img_list():
     """
     获取图像信息
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: patientID
+        in: query
+        type: integer
+        required: true
+        description: patientID
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      500:
+        description: 获取图像列表失败
+      200:
+        description: 获取图像列表成功
     """
-    patient = request.get_json()['patient']
-    if not patient:
+    patientID = request.get_json()['patientID']
+    if not patientID:
         return failReturn("", "获取图像列表失败")
-    img_list = _get_img_list(patient)
+    img_list = _get_img_list(patientID)
     response_object = {'imgs': img_list}
     return successReturn(response_object, "获取图像列表成功")
 
@@ -491,11 +696,34 @@ def update_desc():
     """
     更新用户信息
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: patientID
+        in: query
+        type: integer
+        required: true
+        description: patientID
+      - name: desc
+        in: query
+        type: string
+        description: patient info
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      500:
+        description: 更新失败
+      200:
+        description: 更新成功
     """
     json = request.get_json()
-    id = json['id']
+    patientID = json['patientID']
     info = json['desc']
-    if not _update_desc(id, info):
+    if not _update_desc(patientID, info):
         return failReturn("", "更新失败")
     return successReturn("", "更新成功")
 
@@ -523,6 +751,20 @@ def statistics():
     """
     获取用户列表
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      500:
+        description: 权限不足
+      200:
+        description: 获取用户列表成功
     """
     res = _statistics()
     if not res:
@@ -538,9 +780,28 @@ def user_detail():
     """
     获取用户详细信息
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: userID
+        in: query
+        type: integer
+        required: true
+        description: userID
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      500:
+        description: 用户不存在
+      200:
+        description: 获取用户详细信息成功
     """
-    id = request.get_json()['id']
-    user = User.query.filter_by(id=id).first()
+    userID = request.get_json()['userID']
+    user = User.query.filter_by(id=userID).first()
     if not user:
         return failReturn("", "用户不存在")
     response_object = {'name': user.username, 'realname': user.realname, 'role': str(user.userType)}
@@ -554,13 +815,36 @@ def update_role():
     """
     更新用户权限
     :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: userID
+        in: query
+        type: integer
+        required: true
+        description: userID
+      - name: role
+        in: query
+        type: string
+        description: role
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      500:
+        description: 权限不足或用户不存在
+      200:
+        description: 更新权限成功
     """
     doctor = _get_current_user()
     if doctor.userType != 1:
         return failReturn("", "权限不足")
-    id = request.get_json()['id']
+    userID = request.get_json()['userID']
     role = request.get_json()['role']
-    user = User.query.filter_by(id=id).first()
+    user = User.query.filter_by(id=userID).first()
     if not user:
         return failReturn("", "用户不存在")
     user.userType = int(role)
@@ -574,6 +858,12 @@ def series():
     """
     生成随机uuid
     :return:
+    ---
+    tags:
+      - Manager API
+    responses:
+      200:
+        description: 生成随机uuid
     """
     node = uuid.getnode()
     mac = uuid.UUID(int=node).hex[-12:]

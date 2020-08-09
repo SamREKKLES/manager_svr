@@ -39,17 +39,15 @@ class CTImg(db.Model):
     uploadname = db.Column(db.String(255), unique=False)
     timestamp = db.Column(db.DateTime, default=datetime.now)
     type = db.Column(db.String(255), unique=False)
-    patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'))
-    patient = db.relationship('Patient', backref=db.backref('ctimgs', lazy='dynamic'))
-    doctor_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    docter = db.relationship('User', backref=db.backref('ctimgs', lazy='dynamic'))
+    patient_id = db.Column(db.Integer)
+    doctor_id = db.Column(db.Integer)
 
     def __init__(self, filename, uploadname, img_type, patient, doctor):
         self.filename = filename
         self.type = img_type
-        self.patient = patient
+        self.patient_id = patient
         self.uploadname = uploadname
-        self.docter = doctor
+        self.docter_id = doctor
 
     def __repr__(self):
         return '<DWI %r>' % self.filename
@@ -65,10 +63,8 @@ class Result(db.Model):
     dwi_name = db.Column(db.String(255), unique=False)
     adc_name = db.Column(db.String(255), unique=False)
     info = db.Column(db.String(255), unique=False)
-    patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'))
-    patient = db.relationship('Patient', backref=db.backref('results', lazy='dynamic'))
-    doctor_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    docter = db.relationship('User', backref=db.backref('results', lazy='dynamic'))
+    patient_id = db.Column(db.Integer)
+    doctor_id = db.Column(db.Integer)
     realimg = db.Column(db.String(255), unique=True)
     roi = db.Column(db.String(255), unique=True)
 
@@ -76,8 +72,8 @@ class Result(db.Model):
         self.filename1 = filename1
         self.filename2 = filename2
         self.modeltype = modeltype
-        self.patient = patient
-        self.docter = doctor
+        self.patient_id = patient
+        self.docter_id = doctor
         self.dwi_name = dwi_name
         self.adc_name = adc_name
         self.info = info
@@ -92,25 +88,29 @@ class Patient(db.Model):
     username = db.Column(db.String(255), unique=True)
     age = db.Column(db.Integer)
     sex = db.Column(db.Integer)
+    record_id = db.Column(db.String(255))
     info = db.Column(db.String(255))
     result = db.Column(db.String(255))
-    timestamp = db.Column(db.DateTime, default=datetime.now)
-    doctor_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    docter = db.relationship('User', backref=db.backref('patients', lazy='dynamic'))
+    state = db.Column(db.String(255))
+    create_time = db.Column(db.DateTime)
+    update_time = db.Column(db.DateTime, default=datetime.now)
+    doctor_id = db.Column(db.Integer)
 
-    def __init__(self, username, doctor, age, sex, info, result):
+    def __init__(self, username, recordID, state, doctor, age, sex, info, result):
         self.username = username
-        self.docter = doctor
+        self.docter_id = doctor
+        self.record_id = recordID
+        self.state = state
         self.age = age
         self.sex = sex
         self.info = info
         self.result = result
+        self.create_time = datetime.now
 
     def __repr__(self):
         return '<Patient %r>' % self.username
 
 
-# User==Doctor
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -119,7 +119,7 @@ class User(db.Model):
     realname = db.Column(db.String(255), unique=False)
     userType = db.Column(db.Integer)
 
-    def __init__(self, username, password, realname, userType=2):
+    def __init__(self, username, password, realname, userType=3):
         password = generate_password_hash(password)
         self.username = username
         self.password = password
@@ -196,17 +196,21 @@ def login():
     tags:
       - Manager API
     parameters:
-      - name: username
-        in: query
-        schema:
-            type: string
+      - name: body
+        in: body
         required: true
-        description: username
-      - name: password
-        in: query
         schema:
-            type: string
-        description: password
+          id: 用户登录
+          required:
+            - username
+            - password
+          properties:
+            username:
+              type: string
+              description: 用户名
+            password:
+              type: string
+              description: 密码
     responses:
       500:
         description: 用户名或密码错误
@@ -355,7 +359,7 @@ def get_user():
     return successReturn({"username": username, "id": id}, '获取信息成功')
 
 
-def _add_patient(name, sex, age, info, result):
+def _add_patient(name, sex, age, info, result, recordID, state):
     """
     添加病人
     :param name:
@@ -364,7 +368,7 @@ def _add_patient(name, sex, age, info, result):
     :param info:
     """
     doctor = _get_current_user()
-    patient = Patient(name, doctor, age, sex, info, result)
+    patient = Patient(name, recordID, state, doctor.id, age, sex, info, result)
     db.session.add(patient)
     db.session.commit()
 
@@ -481,7 +485,9 @@ def add_patient():
     age = json['age']
     info = json['desc']
     result = json['result']
-    _add_patient(name, sex, age, info, result)
+    recordID = json['recordID']
+    state = json['state']
+    _add_patient(name, sex, age, info, result, recordID, state)
     return successReturn("", "成功添加病人")
 
 
@@ -850,6 +856,9 @@ def update_role():
     user.userType = int(role)
     db.session.commit()
     return successReturn("", "更新权限成功")
+
+
+# todo: 分三级管理权限，管理员，主任医生，医生。
 
 
 @app.route('/api/series', methods=['GET'])

@@ -1,3 +1,5 @@
+import json
+
 KEY = "zhaohan-manager"
 ISS = "zhaohan"
 DB_USER = 'root'
@@ -8,16 +10,16 @@ SQLALCHEMY_DATABASE_URI = 'mysql://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HO
 
 
 def successReturn(data, msg):
-    return {
-        "status": 'success',
+    return json.dumps({
+        "status": "success",
         "data": data,
         "msg": msg
-    }
+    }, ensure_ascii=False)
 
 
 def failReturn(data, msg):
-    return {
-        "status": 'fail',
+    return json.dumps({
+        "status": "fail",
         "data": data,
         "msg": msg
-    }
+    }, ensure_ascii=False)

@@ -1,9 +1,9 @@
 import os
-from datetime import time
 
 from flasgger import Swagger
 
-from auths import *
+from utils import common
+from utils.auths import *
 from flask import Flask, request, session
 from flask_cors import CORS, cross_origin
 from flask_sqlalchemy import SQLAlchemy
@@ -14,14 +14,17 @@ from wtforms import StringField, PasswordField
 from wtforms.validators import ValidationError, Length
 from flask_wtf import CSRFProtect
 import uuid
-from common import successReturn, failReturn, SQLALCHEMY_DATABASE_URI
+from utils.common import successReturn, failReturn, SQLALCHEMY_DATABASE_URI
 
 # todo 单点登陆 保证manager和model能够同时校验通过 或 在model添加自定义校验
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 app.config['WTF_CSRF_ENABLED'] = False
-Swagger(app)
+swagger_config = Swagger.DEFAULT_CONFIG
+swagger_config['title'] = common.SWAGGER_TITLE
+swagger_config['description'] = common.SWAGGER_DESC
+Swagger(app, config=swagger_config)
 db = SQLAlchemy(app)
 
 app.secret_key = os.urandom(24)
@@ -37,7 +40,7 @@ class CTImg(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), unique=True)
     uploadname = db.Column(db.String(255), unique=False)
-    timestamp = db.Column(db.DateTime, default=datetime.now)
+    timestamp = db.Column(db.DateTime)
     type = db.Column(db.String(255), unique=False)
     patient_id = db.Column(db.Integer)
     doctor_id = db.Column(db.Integer)
@@ -47,7 +50,8 @@ class CTImg(db.Model):
         self.type = img_type
         self.patient_id = patient
         self.uploadname = uploadname
-        self.docter_id = doctor
+        self.doctor_id = doctor
+        self.timestamp = datetime.now()
 
     def __repr__(self):
         return '<DWI %r>' % self.filename
@@ -58,11 +62,11 @@ class Result(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename1 = db.Column(db.String(255), unique=True)
     filename2 = db.Column(db.String(255), unique=True)
-    timestamp = db.Column(db.DateTime, default=datetime.now)
+    timestamp = db.Column(db.DateTime)
     modeltype = db.Column(db.String(255), unique=True)
     dwi_name = db.Column(db.String(255), unique=False)
     adc_name = db.Column(db.String(255), unique=False)
-    info = db.Column(db.String(255), unique=False)
+    info = db.Column(db.Float, unique=False)
     patient_id = db.Column(db.Integer)
     doctor_id = db.Column(db.Integer)
     realimg = db.Column(db.String(255), unique=True)
@@ -73,10 +77,11 @@ class Result(db.Model):
         self.filename2 = filename2
         self.modeltype = modeltype
         self.patient_id = patient
-        self.docter_id = doctor
+        self.doctor_id = doctor
         self.dwi_name = dwi_name
         self.adc_name = adc_name
         self.info = info
+        self.timestamp = datetime.now()
 
     def __repr__(self):
         return '<DWI %r>' % self.filename
@@ -93,19 +98,19 @@ class Patient(db.Model):
     result = db.Column(db.String(255))
     state = db.Column(db.String(255))
     create_time = db.Column(db.DateTime)
-    update_time = db.Column(db.DateTime, default=datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.now())
     doctor_id = db.Column(db.Integer)
 
     def __init__(self, username, recordID, state, doctor, age, sex, info, result):
         self.username = username
-        self.docter_id = doctor
+        self.doctor_id = doctor
         self.record_id = recordID
         self.state = state
         self.age = age
         self.sex = sex
         self.info = info
         self.result = result
-        self.create_time = datetime.now
+        self.create_time = datetime.now()
 
     def __repr__(self):
         return '<Patient %r>' % self.username
@@ -180,13 +185,13 @@ def _get_current_user():
     获取当前用户
     :return:
     """
-    currentName = session["user_name"]
-    if currentName:
-        return User.query.filter_by(username=currentName).first()
+    currentID = session["user_id"]
+    if currentID:
+        return User.query.filter_by(id=currentID).first()
     return null
 
 
-@app.route('/api/login', methods=['POST', "GET"])
+@app.route('/api/login', methods=['POST'])
 @cross_origin()
 def login():
     """
@@ -212,21 +217,24 @@ def login():
               type: string
               description: 密码
     responses:
-      500:
+      fail:
         description: 用户名或密码错误
-      200:
+      success:
         description: 登陆成功
     """
-    user_data = request.get_json()
-    form = LoginForm(data=user_data)
-    if form.validate_on_submit():
-        user = form.get_user()
-        access_token = generate_access_token(user_name=user.username)
-        refresh_token = generate_refresh_token(user_name=user.username)
-        data = {"access_token": access_token.decode("utf-8"),
-                "refresh_token": refresh_token.decode("utf-8")}
-        return successReturn(data, "登陆成功")
-    return failReturn("", "用户名或密码错误")
+    try:
+        user_data = request.get_json()
+        form = LoginForm(data=user_data)
+        if form.validate_on_submit():
+            user = form.get_user()
+            access_token = generate_access_token(user_id=user.id)
+            refreshToken = generate_refresh_token(user_id=user.id)
+            data = {"access_token": access_token.decode("utf-8"),
+                    "refresh_token": refreshToken.decode("utf-8")}
+            return successReturn(data, "login: 登陆成功")
+        return failReturn("", "login: 用户名或密码错误")
+    except Exception as e:
+        return failReturn(format(e), "login出错")
 
 
 @app.route('/api/register', methods=['POST'])
@@ -239,36 +247,45 @@ def register():
     tags:
       - Manager API
     parameters:
-      - name: username
-        in: query
-        type: string
+      - name: body
+        in: body
         required: true
-        description: username
-      - name: password
-        in: query
-        type: string
-        description: password
-      - name: realname
-        in: query
-        type: string
-        description: realname
+        schema:
+          id: 用户注册
+          required:
+            - username
+            - password
+            - realname
+          properties:
+            username:
+              type: string
+              description: 用户名
+            password:
+              type: string
+              description: 密码
+            realname:
+              type: string
+              description: 真实姓名
     responses:
-      500:
+      fail:
         description: 注册失败
-      200:
+      success:
         description: 注册成功
     """
-    user_data = request.get_json()
-    form = RegisterForm(data=user_data)
-    if form.validate():
-        user = User(username=user_data['username'], password=user_data['password'], realname=user_data['realname'])
-        db.session.add(user)
-        db.session.commit()
-        return successReturn("", "注册成功")
-    return failReturn(form.errors, "注册失败")
+    try:
+        user_data = request.get_json()
+        form = RegisterForm(data=user_data)
+        if form.validate():
+            user = User(username=user_data['username'], password=user_data['password'], realname=user_data['realname'])
+            db.session.add(user)
+            db.session.commit()
+            return successReturn("", "register: 注册成功")
+        return failReturn(form.errors, "register: 注册失败")
+    except Exception as e:
+        return failReturn(format(e), "register出错")
 
 
-@app.route('/api/refreshToken', methods=["GET"])
+@app.route('/api/refreshToken', methods=["POST"])
 def refresh_token():
     """
     刷新token，获取新的数据获取token, 当前jwt过期后可请求refresh
@@ -276,24 +293,39 @@ def refresh_token():
     ---
     tags:
       - Manager API
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          id: 刷新token
+          required:
+            - refresh_token
+          properties:
+            refresh_token:
+              type: string
+              description: refresh_token
     responses:
-      500:
+      fail:
         description: 注册失败
-      200:
+      success:
         description: 注册成功
     """
-    user_data = request.get_json()
-    refresh_token = user_data['refresh_token']
-    if not refresh_token:
-        return failReturn("", "参数错误")
-    payload = decode_auth_token(refresh_token)
-    if not payload:
-        return failReturn("", "请登陆")
-    if "user_name" not in payload:
-        return failReturn("", "请登陆")
-    access_token = generate_access_token(user_name=payload["user_name"])
-    data = {"access_token": access_token.decode("utf-8"), "refresh_token": refresh_token}
-    return successReturn(data, "刷新成功")
+    try:
+        user_data = request.get_json()
+        refreshToken = user_data['refresh_token']
+        if not refreshToken:
+            return failReturn("", "refreshToken: 参数错误")
+        payload = decode_auth_token(refreshToken)
+        if not payload:
+            return failReturn("", "refreshToken: 请登陆")
+        if "user_id" not in payload:
+            return failReturn("", "refreshToken: 请登陆")
+        access_token = generate_access_token(user_id=payload["user_id"])
+        data = {"access_token": access_token.decode("utf-8"), "refresh_token": refreshToken}
+        return successReturn(data, "refreshToken: 刷新成功")
+    except Exception as e:
+        return failReturn(format(e), "refreshToken出错")
 
 
 @app.route("/api/logout", methods=['GET'])
@@ -313,7 +345,7 @@ def logout():
         required: true
         description: token
     responses:
-      200:
+      success:
         description: 退出登陆
     """
     session.clear()
@@ -348,15 +380,32 @@ def get_user():
         required: true
         description: token
     responses:
-      500:
+      fail:
         description: 注册失败
-      200:
+      success:
         description: 注册成功
     """
-    username, id = _get_username()
-    if not username:
-        return failReturn("", "获取信息失败")
-    return successReturn({"username": username, "id": id}, '获取信息成功')
+    try:
+        username, id = _get_username()
+        if not username:
+            return failReturn("", "getUser: 获取信息失败")
+        return successReturn({"username": username, "id": id}, "getUser: 获取信息成功")
+    except Exception as e:
+        return failReturn(format(e), "getUser出错")
+
+
+def to_dict(p):
+    return {'id': p.id, "name": p.username, "sex": "男" if p.sex == 0 else "女", "age": p.age, "info": p.info,
+            "result": p.result, "state": p.result, "recordID": p.record_id, "updateTime": p.update_time}
+
+
+def to_dicts(patients):
+    res = []
+    for p in patients:
+        res.append(
+            {'id': p.id, "name": p.username, "sex": "男" if p.sex == 0 else "女", "age": p.age, "info": p.info,
+             "result": p.result, "state": p.result, "recordID": p.record_id, "updateTime": p.update_time})
+    return res
 
 
 def _add_patient(name, sex, age, info, result, recordID, state):
@@ -366,11 +415,27 @@ def _add_patient(name, sex, age, info, result, recordID, state):
     :param sex:
     :param age:
     :param info:
+    :param result:
+    :param recordID:
+    :param state:
+    :return:
     """
     doctor = _get_current_user()
-    patient = Patient(name, recordID, state, doctor.id, age, sex, info, result)
-    db.session.add(patient)
-    db.session.commit()
+    patient = Patient.query.filter_by(record_id=recordID).first()
+    if patient:
+        patient.info = info
+        patient.result = result
+        patient.state = state
+        patient.name = name
+        patient.sex = sex
+        patient.age = age
+        db.session.commit()
+        return "病人已存在，已更新数据"
+    else:
+        patient = Patient(name, recordID, state, doctor.id, age, sex, info, result)
+        db.session.add(patient)
+        db.session.commit()
+        return "病人已成功添加"
 
 
 def _get_patients():
@@ -378,26 +443,14 @@ def _get_patients():
     获取病人列表
     :return: patients
     """
-    def to_dict(patients):
-        res = []
-        for p in patients:
-            res.append({'id': p[0], "name": p[1], "sex": "男" if p[2] == 1 else "女", "info": p[4], "age": p[3]})
-        return res
-
-    def to_dict1(patients):
-        res = []
-        for p in patients:
-            res.append(
-                {'id': p.id, "name": p.username, "sex": "男" if p.sex == 1 else "女", "info": p.info, "age": p.age})
-        return res
-
     doctor = _get_current_user()
     if doctor.userType == 1:
-        patients = db.session.query(Patient.id, Patient.username, Patient.sex, Patient.age, Patient.info).all()
-        return to_dict(patients)
+        patients = db.session.query(Patient.id, Patient.username, Patient.sex, Patient.age, Patient.info,
+                                    Patient.result, Patient.state, Patient.record_id, Patient.update_time).all()
+        return to_dicts(patients)
     else:
-        patients = doctor.patients.all()
-        return to_dict1(patients)
+        patients = Patient.query.filter_by(doctor_id=doctor.id).all()
+        return to_dicts(patients)
 
 
 def _get_patient(id):
@@ -406,12 +459,9 @@ def _get_patient(id):
     :param id:
     :return: patient
     """
-    def to_dict(p):
-        return {'id': p.id, "name": p.username, "sex": "男" if p.sex == 1 else "女", "info": p.info, "age": p.age}
-
     patient = Patient.query.filter_by(id=id).first()
     doctor = _get_current_user()
-    if doctor.userType == 1 or patient.docter == doctor:
+    if doctor.userType == 1 or patient.doctor_id == doctor.id:
         return to_dict(patient)
     else:
         return None
@@ -423,11 +473,11 @@ def _del_patient(id):
     :param id:
     :return: boolean
     """
-    user = Patient.query.filter_by(id=id).first()
-    if not user:
+    patient = Patient.query.filter_by(id=id).first()
+    if not patient:
         return False
-    img_list = Patient.query.filter_by(id=id).first().ctimgs.all()
-    db.session.delete(user)
+    img_list = CTImg.query.filter_by(patient_id=patient.id).all()
+    db.session.delete(patient)
     if img_list:
         for item in img_list:
             os.remove(os.path.join(app.config['UPLOAD_FOLDER'], item.filename))
@@ -447,48 +497,59 @@ def add_patient():
     tags:
       - Manager API
     parameters:
-      - name: name
-        in: query
-        type: string
+      - name: body
+        in: body
         required: true
-        description: name
-      - name: sex
-        in: query
-        type: integer
-        description: 0为男 1为女
-      - name: age
-        in: query
-        type: integer
-        description: age
-      - name: desc
-        in: query
-        type: string
-        description: desc
-      - name: result
-        in: query
-        type: string
-        description: result
+        schema:
+          id: 添加病人
+          required:
+            - name
+          properties:
+            name:
+              type: string
+              description: name
+            sex:
+              type: integer
+              description: 0为男 1为女
+            age:
+              type: integer
+              description: age
+            info:
+              type: string
+              description: 病人基础信息
+            result:
+              type: string
+              description: 检查结果
+            recordID:
+              type: string
+              description: 病例ID
+            state:
+              type: string
+              description: 病人状态
       - name: Authorization
         in: header
         type: string
         required: true
         description: token
     responses:
-      500:
+      fail:
         description: 添加病人失败
-      200:
+      success:
         description: 成加病人成功
     """
-    json = request.get_json()
-    name = json['name']
-    sex = json['sex']
-    age = json['age']
-    info = json['desc']
-    result = json['result']
-    recordID = json['recordID']
-    state = json['state']
-    _add_patient(name, sex, age, info, result, recordID, state)
-    return successReturn("", "成功添加病人")
+    try:
+        json = request.get_json()
+        name = json['name']
+        sex = json['sex']
+        age = json['age']
+        info = json['info']
+        result = json['result']
+        recordID = json['recordID']
+        state = json['state']
+        msg = _add_patient(name, sex, age, info, result, recordID, state)
+        return successReturn("", msg)
+    except Exception as e:
+        return failReturn(format(e), "addPatient出错")
 
 
 @app.route('/api/getPatients', methods=['GET'])
@@ -508,14 +569,17 @@ def get_patients():
         required: true
         description: token
     responses:
-      500:
+      fail:
         description: 获取病人列表失败
-      200:
+      success:
         description: 获取病人列表成功
     """
-    patients = _get_patients()
-    response_object = {'patients': patients}
-    return successReturn(response_object, "获取病人列表成功")
+    try:
+        patients = _get_patients()
+        response_object = {'patients': patients}
+        return successReturn(response_object, "getPatients： 获取病人列表成功")
+    except Exception as e:
+        return failReturn(format(e), "getPatients出错")
 
 
 @app.route('/api/getPatient', methods=['POST'])
@@ -529,29 +593,38 @@ def get_patient():
     tags:
       - Manager API
     parameters:
-      - name: patientID
-        in: query
-        type: integer
+      - name: body
+        in: body
         required: true
-        description: patientID
+        schema:
+          id: 根据id获取病人
+          required:
+            - patientID
+          properties:
+            patientID:
+              type: integer
+              description: patientID
       - name: Authorization
         in: header
         type: string
         required: true
         description: token
     responses:
-      500:
+      fail:
         description: 获取病人失败
-      200:
+      success:
         description: 获取病人成功
     """
-    json = request.get_json()
-    patientID = json['patientID']
-    patient = _get_patient(patientID)
-    if not patient:
-        return failReturn("", "获取病人失败")
-    response_object = {'patient': patient}
-    return successReturn(response_object, "获取病人成功")
+    try:
+        json = request.get_json()
+        patientID = json['patientID']
+        patient = _get_patient(patientID)
+        if not patient:
+            return failReturn("", "getPatient: 获取病人失败")
+        response_object = {'patient': patient}
+        return successReturn(response_object, "getPatient: 获取病人成功")
+    except Exception as e:
+        return failReturn(format(e), "getPatient出错")
 
 
 @app.route('/api/delPatient', methods=['POST'])
@@ -565,26 +638,35 @@ def del_patient():
     tags:
       - Manager API
     parameters:
-      - name: patientID
-        in: query
-        type: integer
+      - name: body
+        in: body
         required: true
-        description: patientID
+        schema:
+          id: 删除病人
+          required:
+            - patientID
+          properties:
+            patientID:
+              type: integer
+              description: patientID
       - name: Authorization
         in: header
         type: string
         required: true
         description: token
     responses:
-      500:
+      fail:
         description: 删除失败
-      200:
+      success:
         description: 删除成功
     """
-    patientID = request.get_json()['patientID']
-    if not _del_patient(patientID):
-        return failReturn("", "删除失败")
-    return successReturn("", "删除成功")
+    try:
+        patientID = request.get_json()['patientID']
+        if not _del_patient(patientID):
+            return failReturn("", "delPatient: 删除失败")
+        return successReturn("", "delPatient: 删除成功")
+    except Exception as e:
+        return failReturn(format(e), "delPatient出错")
 
 
 def _get_img_list(id):
@@ -594,12 +676,12 @@ def _get_img_list(id):
     :return: res
     """
     res = []
-    img_list = Patient.query.filter_by(id=id).first().ctimgs.order_by("time").all()
+    img_list = CTImg.query.filter_by(patient_id=id).order_by("timestamp").all()
     for item in img_list:
         res.append(
             {
                 "uploadname": item.uploadname,
-                "time": time.strftime("%Y%m%d", time.localtime(int(item.time))),
+                "timestamp": item.timestamp,
                 "type": item.type,
                 "filename": item.filename,
                 "disabled": False
@@ -619,30 +701,39 @@ def get_detail():
     tags:
       - Manager API
     parameters:
-      - name: patientID
-        in: query
-        type: integer
+      - name: body
+        in: body
         required: true
-        description: patientID
+        schema:
+          id: 根据id获取病人详细信息
+          required:
+            - patientID
+          properties:
+            patientID:
+              type: integer
+              description: patientID
       - name: Authorization
         in: header
         type: string
         required: true
         description: token
     responses:
-      500:
+      fail:
         description: 获取病人信息失败
-      200:
+      success:
         description: 获取病人信息成功
     """
-    json = request.get_json()
-    patientID = json['patientID']
-    patient = _get_patient(patientID)
-    if not patient:
-        return failReturn("", "获取病人信息失败")
-    img_list = _get_img_list(id)
-    response_object = {'patient': patient, 'imgs': img_list}
-    return successReturn(response_object, "获取病人信息成功")
+    try:
+        json = request.get_json()
+        patientID = json['patientID']
+        patient = _get_patient(patientID)
+        if not patient:
+            return failReturn("", "getDetail: 获取病人信息失败")
+        img_list = _get_img_list(patientID)
+        response_object = {'patient': patient, 'imgs': img_list}
+        return successReturn(response_object, "getDetail: 获取病人信息成功")
+    except Exception as e:
+        return failReturn(format(e), "getDetail出错")
 
 
 @app.route('/api/imgList', methods=['POST'])
@@ -656,31 +747,40 @@ def get_img_list():
     tags:
       - Manager API
     parameters:
-      - name: patientID
-        in: query
-        type: integer
+      - name: body
+        in: body
         required: true
-        description: patientID
+        schema:
+          id: 根据id获取病人详细信息
+          required:
+            - patientID
+          properties:
+            patientID:
+              type: integer
+              description: patientID
       - name: Authorization
         in: header
         type: string
         required: true
         description: token
     responses:
-      500:
+      fail:
         description: 获取图像列表失败
-      200:
+      success:
         description: 获取图像列表成功
     """
-    patientID = request.get_json()['patientID']
-    if not patientID:
-        return failReturn("", "获取图像列表失败")
-    img_list = _get_img_list(patientID)
-    response_object = {'imgs': img_list}
-    return successReturn(response_object, "获取图像列表成功")
+    try:
+        patientID = request.get_json()['patientID']
+        if not patientID:
+            return failReturn("", "imgList: 获取图像列表失败")
+        img_list = _get_img_list(patientID)
+        response_object = {'imgs': img_list}
+        return successReturn(response_object, "imgList: 获取图像列表成功")
+    except Exception as e:
+        return failReturn(format(e), "imgList出错")
 
 
-def _update_desc(id, info):
+def _update_info(id, info, result, state):
     """
     更新信息
     :param id:
@@ -691,14 +791,16 @@ def _update_desc(id, info):
     if not patient:
         return False
     patient.info = info
+    patient.result = result
+    patient.state = state
     db.session.commit()
     return True
 
 
-@app.route('/api/updateDesc', methods=['POST'])
+@app.route('/api/updateInfo', methods=['POST'])
 @login_required
 @cross_origin()
-def update_desc():
+def update_info():
     """
     更新用户信息
     :return: json
@@ -706,32 +808,57 @@ def update_desc():
     tags:
       - Manager API
     parameters:
-      - name: patientID
-        in: query
-        type: integer
+      - name: body
+        in: body
         required: true
-        description: patientID
-      - name: desc
-        in: query
-        type: string
-        description: patient info
+        schema:
+          id: 更新用户信息
+          required:
+            - patientID
+          properties:
+            patientID:
+              type: integer
+              description: patientID
+            info:
+              type: string
+              description: info
+            result:
+              type: string
+              description: result
+            state:
+              type: string
+              description: state
       - name: Authorization
         in: header
         type: string
         required: true
         description: token
     responses:
-      500:
+      fail:
         description: 更新失败
-      200:
+      success:
         description: 更新成功
     """
-    json = request.get_json()
-    patientID = json['patientID']
-    info = json['desc']
-    if not _update_desc(patientID, info):
-        return failReturn("", "更新失败")
-    return successReturn("", "更新成功")
+    try:
+        json = request.get_json()
+        patientID = json['patientID']
+        info = json['info']
+        result = json['result']
+        state = json['state']
+        if not _update_info(patientID, info, result, state):
+            return failReturn("", "updateInfo: 更新失败")
+        return successReturn("", "updateInfo: 更新成功")
+    except Exception as e:
+        return failReturn(format(e), "updateInfo出错")
+
+
+def _userType(u):
+    if u.userType == 1:
+        return "管理员"
+    elif u.userType == 2:
+        return "主任医生"
+    else:
+        return "医生"
 
 
 def _statistics():
@@ -745,8 +872,9 @@ def _statistics():
     users = User.query.all()
     res = []
     for u in users:
-        res.append({"id": u.id, "name": u.realname, "patients": u.patients.count(), "res": u.results.count(),
-                    "role": "医生" if u.userType == 2 else "主任医生"})
+        patients = Patient.query.filter_by(doctor_id=u.id).all()
+        role = _userType(u)
+        res.append({"id": u.id, "name": u.realname, "patients": to_dicts(patients), "role": role})
     return res
 
 
@@ -767,16 +895,19 @@ def statistics():
         required: true
         description: token
     responses:
-      500:
+      fail:
         description: 权限不足
-      200:
+      success:
         description: 获取用户列表成功
     """
-    res = _statistics()
-    if not res:
-        return failReturn("", "权限不足")
-    response_object = {'res': res}
-    return successReturn(response_object, "获取用户列表成功")
+    try:
+        res = _statistics()
+        if not res:
+            return failReturn("", "statistics: 权限不足")
+        response_object = {'res': res}
+        return successReturn(response_object, "statistics: 获取用户列表成功")
+    except Exception as e:
+        return failReturn(format(e), "statistics出错")
 
 
 @app.route('/api/userDetail', methods=['POST'])
@@ -790,28 +921,38 @@ def user_detail():
     tags:
       - Manager API
     parameters:
-      - name: userID
-        in: query
-        type: integer
+      - name: body
+        in: body
         required: true
-        description: userID
+        schema:
+          id: 获取用户详细信息
+          required:
+            - userID
+          properties:
+            userID:
+              type: integer
+              description: userID
       - name: Authorization
         in: header
         type: string
         required: true
         description: token
     responses:
-      500:
+      fail:
         description: 用户不存在
-      200:
+      success:
         description: 获取用户详细信息成功
     """
-    userID = request.get_json()['userID']
-    user = User.query.filter_by(id=userID).first()
-    if not user:
-        return failReturn("", "用户不存在")
-    response_object = {'name': user.username, 'realname': user.realname, 'role': str(user.userType)}
-    return successReturn(response_object, "获取用户详细信息成功")
+    try:
+        userID = request.get_json()['userID']
+        user = User.query.filter_by(id=userID).first()
+        if not user:
+            return failReturn("", "userDetail: 用户不存在")
+        role = _userType(user)
+        response_object = {'name': user.username, 'realname': user.realname, 'role': role}
+        return successReturn(response_object, "userDetail； 获取用户详细信息成功")
+    except Exception as e:
+        return failReturn(format(e), "userDetail出错")
 
 
 @app.route('/api/updateRole', methods=['POST'])
@@ -825,40 +966,46 @@ def update_role():
     tags:
       - Manager API
     parameters:
-      - name: userID
-        in: query
-        type: integer
+      - name: body
+        in: body
         required: true
-        description: userID
-      - name: role
-        in: query
-        type: string
-        description: role
+        schema:
+          id: 更新用户权限
+          required:
+            - userID
+            - role
+          properties:
+            userID:
+              type: integer
+              description: userID
+            role:
+              type: integer
+              description: role 1管理员 2主任医生 3医生
       - name: Authorization
         in: header
         type: string
         required: true
         description: token
     responses:
-      500:
+      fail:
         description: 权限不足或用户不存在
-      200:
+      success:
         description: 更新权限成功
     """
-    doctor = _get_current_user()
-    if doctor.userType != 1:
-        return failReturn("", "权限不足")
-    userID = request.get_json()['userID']
-    role = request.get_json()['role']
-    user = User.query.filter_by(id=userID).first()
-    if not user:
-        return failReturn("", "用户不存在")
-    user.userType = int(role)
-    db.session.commit()
-    return successReturn("", "更新权限成功")
-
-
-# todo: 分三级管理权限，管理员，主任医生，医生。
+    try:
+        doctor = _get_current_user()
+        userID = request.get_json()['userID']
+        role = request.get_json()['role']
+        if doctor.userType > role:
+            return failReturn("", "updateRole; 权限不足")
+        user = User.query.filter_by(id=userID).first()
+        if not user:
+            return failReturn("", "updateRole； 用户不存在")
+        user.userType = role
+        db.session.commit()
+        return successReturn("", "updateRole: 更新权限成功")
+    except Exception as e:
+        return failReturn(format(e), "updateRole出错")
 
 
 @app.route('/api/series', methods=['GET'])
@@ -870,14 +1017,23 @@ def series():
     ---
     tags:
       - Manager API
+    parameter:
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
     responses:
-      200:
+      success:
         description: 生成随机uuid
     """
-    node = uuid.getnode()
-    mac = uuid.UUID(int=node).hex[-12:]
-    response_object = {'mac': mac}
-    return successReturn(response_object, "生成随机uuid")
+    try:
+        node = uuid.getnode()
+        mac = uuid.UUID(int=node).hex[-12:]
+        response_object = {'mac': mac}
+        return successReturn(response_object, "series: 生成随机uuid")
+    except Exception as e:
+        return failReturn(format(e), "series出错")
 
 
 if __name__ == '__main__':

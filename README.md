@@ -1,8 +1,8 @@
 ## 技术栈
 
 - 后端：Flask
-- 数据库：sqlite3+Flask-SQLAlchemy
-- 登陆管理：flask-login
+- 数据库：MySQL + Flask-SQLAlchemy
+- 登陆管理：authentication + jwt 权限验证
 
 ## 项目结构
 
@@ -11,10 +11,14 @@
 ## 进展&TODO
 
 - [x] 后端管理后台建立，数据库建表
+- [ ]  原型图接口对齐
+- [ ]  前后端联调
 
 ## 数据库
-- User表：注册医生的姓名，密码，权限等信息
-- Patient表；存储患者拥有的CT图像，拥有他的医生
+- Users表：注册医生的姓名，密码，权限等信息
+- Patients表：存储患者拥有的CT图像，拥有他的医生
+- CTImgs表：存储img信息
+- Results表：存储图像分析结果
+- models表：存储模型信息
 
-**当前设计为一个患者只对应一个医生，之后可以考虑建立多对多的数据表，让一个医生有多个患者，一个患者有多个医生**
-"# manager_svr" 
+**运行方法：python app.py 安装好所有环境后即可运行。

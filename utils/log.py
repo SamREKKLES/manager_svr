@@ -3,7 +3,7 @@ from logging import handlers
 
 
 def logError(message):
-    logger = logging.getLogger('error.log')
+    logger = logging.getLogger('error')
 
     #  这里进行判断，如果logger.handlers列表为空，则添加，否则，直接去写日志
     if not logger.handlers:
@@ -20,7 +20,7 @@ def logError(message):
 
 
 def logInfo(message):
-    logger = logging.getLogger('all.log')
+    logger = logging.getLogger('all')
 
     #  这里进行判断，如果logger.handlers列表为空，则添加，否则，直接去写日志
     if not logger.handlers:

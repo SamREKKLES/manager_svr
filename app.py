@@ -7,13 +7,12 @@ from utils.auths import *
 from flask import Flask, request, session
 from flask_cors import CORS, cross_origin
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import null
+from sqlalchemy import null, func
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField
 from wtforms.validators import ValidationError, Length
 from flask_wtf import CSRFProtect
-import uuid
 from utils.common import successReturn, failReturn, SQLALCHEMY_DATABASE_URI
 
 # todo 单点登陆 保证manager和model能够同时校验通过 或 在model添加自定义校验
@@ -35,8 +34,8 @@ CSRFProtect(app)
 CORS(app, supports_credentials=True, resources={r'/*': {'origins': '*'}})
 
 
-class CTImg(db.Model):
-    __tablename__ = 'ctimgs'
+class Img(db.Model):
+    __tablename__ = 'imgs'
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), unique=True)
     uploadname = db.Column(db.String(255), unique=False)
@@ -96,12 +95,13 @@ class Patient(db.Model):
     record_id = db.Column(db.String(255))
     info = db.Column(db.String(255))
     result = db.Column(db.String(255))
+    cva = db.Column(db.String(255))
     state = db.Column(db.String(255))
     create_time = db.Column(db.DateTime)
     update_time = db.Column(db.DateTime, default=datetime.now())
     doctor_id = db.Column(db.Integer)
 
-    def __init__(self, username, recordID, state, doctor, age, sex, info, result):
+    def __init__(self, username, recordID, state, doctor, age, sex, info, result, cva):
         self.username = username
         self.doctor_id = doctor
         self.record_id = recordID
@@ -110,6 +110,7 @@ class Patient(db.Model):
         self.sex = sex
         self.info = info
         self.result = result
+        self.cva = cva
         self.create_time = datetime.now()
 
     def __repr__(self):
@@ -359,7 +360,7 @@ def _get_username():
     """
     doctor = _get_current_user()
     if doctor:
-        return doctor.realname, doctor.id
+        return doctor.realname, doctor.id, doctor.userType
     return False
 
 
@@ -368,7 +369,7 @@ def _get_username():
 @cross_origin()
 def get_user():
     """
-    获取用户信息
+    个人信息页
     :return: json
     ---
     tags:
@@ -386,31 +387,35 @@ def get_user():
         description: 注册成功
     """
     try:
-        username, id = _get_username()
+        username, id, userType = _get_username()
         if not username:
             return failReturn("", "getUser: 获取信息失败")
-        return successReturn({"username": username, "id": id}, "getUser: 获取信息成功")
+        return successReturn({"username": username, "id": id, "userType": userType}, "getUser: 获取信息成功")
     except Exception as e:
         return failReturn(format(e), "getUser出错")
 
 
 def to_dict(p):
-    return {'id': p.id, "name": p.username, "sex": "男" if p.sex == 0 else "女", "age": p.age, "info": p.info,
-            "result": p.result, "state": p.result, "recordID": p.record_id, "updateTime": p.update_time}
+    doctor = User.query.filter_by(id=p.doctor_id).first()
+    return {'id': p.id, "doctor": doctor.username, "name": p.username, "sex": "男" if p.sex == 0 else "女",
+            "recordID": p.record_id, "age": p.age, "cva": p.cva, "info": p.info, "state": p.state,
+            "result": p.result, "updateTime": p.update_time, "createTime": p.create_time}
 
 
 def to_dicts(patients):
     res = []
     for p in patients:
+        doctor = User.query.filter_by(id=p.doctor_id).first()
         res.append(
-            {'id': p.id, "name": p.username, "sex": "男" if p.sex == 0 else "女", "age": p.age, "info": p.info,
-             "result": p.result, "state": p.result, "recordID": p.record_id, "updateTime": p.update_time})
+            {'id': p.id, "doctor": doctor.username, "name": p.username, "sex": "男" if p.sex == 0 else "女",
+             "recordID": p.record_id, "age": p.age, "cva": p.cva, "info": p.info, "state": p.state,
+             "result": p.result, "updateTime": p.update_time, "createTime": p.create_time})
     return res
 
 
-def _add_patient(name, sex, age, info, result, recordID, state):
+def _add_patient(name, sex, age, info, result, recordID, state, cva):
     """
-    添加病人
+    添加病人或编辑病人状态
     :param name:
     :param sex:
     :param age:
@@ -429,10 +434,11 @@ def _add_patient(name, sex, age, info, result, recordID, state):
         patient.name = name
         patient.sex = sex
         patient.age = age
+        patient.cva = cva
         db.session.commit()
         return "病人已存在，已更新数据"
     else:
-        patient = Patient(name, recordID, state, doctor.id, age, sex, info, result)
+        patient = Patient(name, recordID, state, doctor.id, age, sex, info, result, cva)
         db.session.add(patient)
         db.session.commit()
         return "病人已成功添加"
@@ -445,26 +451,11 @@ def _get_patients():
     """
     doctor = _get_current_user()
     if doctor.userType == 1:
-        patients = db.session.query(Patient.id, Patient.username, Patient.sex, Patient.age, Patient.info,
-                                    Patient.result, Patient.state, Patient.record_id, Patient.update_time).all()
+        patients = db.session.query(Patient).order_by(Patient.update_time).all()
         return to_dicts(patients)
     else:
         patients = Patient.query.filter_by(doctor_id=doctor.id).all()
         return to_dicts(patients)
-
-
-def _get_patient(id):
-    """
-    通过id获取病人
-    :param id:
-    :return: patient
-    """
-    patient = Patient.query.filter_by(id=id).first()
-    doctor = _get_current_user()
-    if doctor.userType == 1 or patient.doctor_id == doctor.id:
-        return to_dict(patient)
-    else:
-        return None
 
 
 def _del_patient(id):
@@ -476,7 +467,7 @@ def _del_patient(id):
     patient = Patient.query.filter_by(id=id).first()
     if not patient:
         return False
-    img_list = CTImg.query.filter_by(patient_id=patient.id).all()
+    img_list = Img.query.filter_by(patient_id=patient.id).all()
     db.session.delete(patient)
     if img_list:
         for item in img_list:
@@ -491,7 +482,7 @@ def _del_patient(id):
 @cross_origin()
 def add_patient():
     """
-    添加病人
+    添加病人或编辑病人状态
     :return: json
     ---
     tags:
@@ -501,7 +492,7 @@ def add_patient():
         in: body
         required: true
         schema:
-          id: 添加病人
+          id: 添加病人或编辑病人状态
           required:
             - name
           properties:
@@ -526,6 +517,9 @@ def add_patient():
             state:
               type: string
               description: 病人状态
+            cva:
+              type: string
+              description: 脑卒中分类
       - name: Authorization
         in: header
         type: string
@@ -546,7 +540,8 @@ def add_patient():
         result = json['result']
         recordID = json['recordID']
         state = json['state']
-        msg = _add_patient(name, sex, age, info, result, recordID, state)
+        cva = json['cva']
+        msg = _add_patient(name, sex, age, info, result, recordID, state, cva)
         return successReturn("", msg)
     except Exception as e:
         return failReturn(format(e), "addPatient出错")
@@ -575,17 +570,33 @@ def get_patients():
         description: 获取病人列表成功
     """
     try:
-        patients = _get_patients()
-        response_object = {'patients': patients}
+        patientList = _get_patients()
+        response_object = {'patientList': patientList}
         return successReturn(response_object, "getPatients： 获取病人列表成功")
     except Exception as e:
         return failReturn(format(e), "getPatients出错")
 
 
-@app.route('/api/getPatient', methods=['POST'])
+def _get_patient_id(id):
+    """
+    通过id获取病人
+    :param id:
+    :return: patient
+    """
+    patient = Patient.query.filter_by(id=id).first()
+    if patient is None:
+        return None
+    doctor = _get_current_user()
+    if doctor.userType == 1 or patient.doctor_id == doctor.id:
+        return to_dict(patient)
+    else:
+        return None
+
+
+@app.route('/api/getPatientByID', methods=['POST'])
 @login_required
 @cross_origin()
-def get_patient():
+def get_patient_by_id():
     """
     根据id获取病人
     :return: json
@@ -618,13 +629,74 @@ def get_patient():
     try:
         json = request.get_json()
         patientID = json['patientID']
-        patient = _get_patient(patientID)
+        patient = _get_patient_id(patientID)
         if not patient:
-            return failReturn("", "getPatient: 获取病人失败")
+            return failReturn("", "getPatientByID: 获取病人失败")
         response_object = {'patient': patient}
-        return successReturn(response_object, "getPatient: 获取病人成功")
+        return successReturn(response_object, "getPatientByID: 获取病人成功")
     except Exception as e:
-        return failReturn(format(e), "getPatient出错")
+        return failReturn(format(e), "getPatientByID出错")
+
+
+def _get_patient_name(username):
+    """
+        通过username获取病人
+        :param username:
+        :return: patient
+        """
+    patient = Patient.query.filter_by(username=username).first()
+    if patient is None:
+        return None
+    doctor = _get_current_user()
+    if doctor.userType == 1 or patient.doctor_id == doctor.id:
+        return to_dict(patient)
+    else:
+        return None
+
+
+@app.route('/api/getPatientByName', methods=['POST'])
+@login_required
+@cross_origin()
+def get_patient_by_name():
+    """
+    根据username获取病人
+    :return: json
+    ---
+    tags:
+      - Manager API
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          id: 根据username获取病人
+          required:
+            - username
+          properties:
+            username:
+              type: string
+              description: username
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: token
+    responses:
+      fail:
+        description: 获取病人失败
+      success:
+        description: 获取病人成功
+    """
+    try:
+        json = request.get_json()
+        username = json['username']
+        patient = _get_patient_name(username)
+        if not patient:
+            return failReturn("", "getPatientByName: 获取病人失败")
+        response_object = {'patient': patient}
+        return successReturn(response_object, "getPatientByName: 获取病人成功")
+    except Exception as e:
+        return failReturn(format(e), "getPatientByName出错")
 
 
 @app.route('/api/delPatient', methods=['POST'])
@@ -669,189 +741,6 @@ def del_patient():
         return failReturn(format(e), "delPatient出错")
 
 
-def _get_img_list(id):
-    """
-    获取imgList
-    :param id:
-    :return: res
-    """
-    res = []
-    img_list = CTImg.query.filter_by(patient_id=id).order_by("timestamp").all()
-    for item in img_list:
-        res.append(
-            {
-                "uploadname": item.uploadname,
-                "timestamp": item.timestamp,
-                "type": item.type,
-                "filename": item.filename,
-                "disabled": False
-            }
-        )
-    return res
-
-
-@app.route('/api/getDetail', methods=['POST'])
-@login_required
-@cross_origin()
-def get_detail():
-    """
-    获取病人详细信息
-    :return: json
-    ---
-    tags:
-      - Manager API
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          id: 根据id获取病人详细信息
-          required:
-            - patientID
-          properties:
-            patientID:
-              type: integer
-              description: patientID
-      - name: Authorization
-        in: header
-        type: string
-        required: true
-        description: token
-    responses:
-      fail:
-        description: 获取病人信息失败
-      success:
-        description: 获取病人信息成功
-    """
-    try:
-        json = request.get_json()
-        patientID = json['patientID']
-        patient = _get_patient(patientID)
-        if not patient:
-            return failReturn("", "getDetail: 获取病人信息失败")
-        img_list = _get_img_list(patientID)
-        response_object = {'patient': patient, 'imgs': img_list}
-        return successReturn(response_object, "getDetail: 获取病人信息成功")
-    except Exception as e:
-        return failReturn(format(e), "getDetail出错")
-
-
-@app.route('/api/imgList', methods=['POST'])
-@login_required
-@cross_origin()
-def get_img_list():
-    """
-    获取图像信息
-    :return: json
-    ---
-    tags:
-      - Manager API
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          id: 根据id获取病人详细信息
-          required:
-            - patientID
-          properties:
-            patientID:
-              type: integer
-              description: patientID
-      - name: Authorization
-        in: header
-        type: string
-        required: true
-        description: token
-    responses:
-      fail:
-        description: 获取图像列表失败
-      success:
-        description: 获取图像列表成功
-    """
-    try:
-        patientID = request.get_json()['patientID']
-        if not patientID:
-            return failReturn("", "imgList: 获取图像列表失败")
-        img_list = _get_img_list(patientID)
-        response_object = {'imgs': img_list}
-        return successReturn(response_object, "imgList: 获取图像列表成功")
-    except Exception as e:
-        return failReturn(format(e), "imgList出错")
-
-
-def _update_info(id, info, result, state):
-    """
-    更新信息
-    :param id:
-    :param info:
-    :return: boolean
-    """
-    patient = Patient.query.filter_by(id=id).first()
-    if not patient:
-        return False
-    patient.info = info
-    patient.result = result
-    patient.state = state
-    db.session.commit()
-    return True
-
-
-@app.route('/api/updateInfo', methods=['POST'])
-@login_required
-@cross_origin()
-def update_info():
-    """
-    更新用户信息
-    :return: json
-    ---
-    tags:
-      - Manager API
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          id: 更新用户信息
-          required:
-            - patientID
-          properties:
-            patientID:
-              type: integer
-              description: patientID
-            info:
-              type: string
-              description: info
-            result:
-              type: string
-              description: result
-            state:
-              type: string
-              description: state
-      - name: Authorization
-        in: header
-        type: string
-        required: true
-        description: token
-    responses:
-      fail:
-        description: 更新失败
-      success:
-        description: 更新成功
-    """
-    try:
-        json = request.get_json()
-        patientID = json['patientID']
-        info = json['info']
-        result = json['result']
-        state = json['state']
-        if not _update_info(patientID, info, result, state):
-            return failReturn("", "updateInfo: 更新失败")
-        return successReturn("", "updateInfo: 更新成功")
-    except Exception as e:
-        return failReturn(format(e), "updateInfo出错")
-
-
 def _userType(u):
     if u.userType == 1:
         return "管理员"
@@ -872,16 +761,15 @@ def _statistics():
     users = User.query.all()
     res = []
     for u in users:
-        patients = Patient.query.filter_by(doctor_id=u.id).all()
         role = _userType(u)
-        res.append({"id": u.id, "name": u.realname, "patients": to_dicts(patients), "role": role})
+        res.append({"id": u.id, "name": u.realname, "role": role})
     return res
 
 
-@app.route('/api/statistics', methods=['GET'])
+@app.route('/api/userInfo', methods=['GET'])
 @login_required
 @cross_origin()
-def statistics():
+def user_info():
     """
     获取用户列表
     :return: json
@@ -903,11 +791,11 @@ def statistics():
     try:
         res = _statistics()
         if not res:
-            return failReturn("", "statistics: 权限不足")
-        response_object = {'res': res}
-        return successReturn(response_object, "statistics: 获取用户列表成功")
+            return failReturn("", "userInfo: 权限不足")
+        response_object = {'userInfo': res}
+        return successReturn(response_object, "userInfo: 获取用户列表成功")
     except Exception as e:
-        return failReturn(format(e), "statistics出错")
+        return failReturn(format(e), "userInfo出错")
 
 
 @app.route('/api/userDetail', methods=['POST'])
@@ -1008,32 +896,258 @@ def update_role():
         return failReturn(format(e), "updateRole出错")
 
 
-@app.route('/api/series', methods=['GET'])
+def to_list(patients):
+    res = []
+    manNumber = 0
+    totalNumber = 0
+    for p in patients:
+        totalNumber += 1
+        if p.sex == 0:
+            manNumber += 1
+        res.append({"sex": "男" if p.sex == 0 else "女", "age": p.age, "cva": p.cva})
+    return res, manNumber, totalNumber
+
+
+@app.route('/api/patientsAnalyze', methods=['GET'])
+@login_required
 @cross_origin()
-def series():
+def patients_analyze():
     """
-    生成随机uuid
-    :return:
+    统计结果分析
+    :return: json
     ---
     tags:
       - Manager API
-    parameter:
+    parameters:
       - name: Authorization
         in: header
         type: string
         required: true
         description: token
     responses:
+      fail:
+        description: 权限不足或用户不存在
       success:
-        description: 生成随机uuid
+        description: 更新权限成功
     """
     try:
-        node = uuid.getnode()
-        mac = uuid.UUID(int=node).hex[-12:]
-        response_object = {'mac': mac}
-        return successReturn(response_object, "series: 生成随机uuid")
+        patients = db.session.query(Patient).order_by(Patient.update_time).all()
+        cvaList, manNumber, totalNumber = to_list(patients)
+        response_object = {'manNumber': manNumber, 'totalNumber': totalNumber, 'list': cvaList}
+        return successReturn(response_object, "patientsAnalyze: 统计结果分析成功")
     except Exception as e:
-        return failReturn(format(e), "series出错")
+        return failReturn(format(e), "patientsAnalyze出错")
+
+
+# @app.route('/api/series', methods=['GET'])
+# @cross_origin()
+# def series():
+#     """
+#     生成随机uuid
+#     :return:
+#     ---
+#     tags:
+#       - Manager API
+#     parameter:
+#       - name: Authorization
+#         in: header
+#         type: string
+#         required: true
+#         description: token
+#     responses:
+#       success:
+#         description: 生成随机uuid
+#     """
+#     try:
+#         node = uuid.getnode()
+#         mac = uuid.UUID(int=node).hex[-12:]
+#         response_object = {'mac': mac}
+#         return successReturn(response_object, "series: 生成随机uuid")
+#     except Exception as e:
+#         return failReturn(format(e), "series出错")
+
+
+# def _get_img_list(id):
+#     """
+#     获取imgList
+#     :param id:
+#     :return: res
+#     """
+#     res = []
+#     img_list = Img.query.filter_by(patient_id=id).order_by("timestamp").all()
+#     for item in img_list:
+#         res.append(
+#             {
+#                 "uploadname": item.uploadname,
+#                 "timestamp": item.timestamp,
+#                 "type": item.type,
+#                 "filename": item.filename,
+#                 "disabled": False
+#             }
+#         )
+#     return res
+#
+#
+# @app.route('/api/getDetail', methods=['POST'])
+# @login_required
+# @cross_origin()
+# def get_detail():
+#     """
+#     获取病人详细信息
+#     :return: json
+#     ---
+#     tags:
+#       - Manager API
+#     parameters:
+#       - name: body
+#         in: body
+#         required: true
+#         schema:
+#           id: 根据id获取病人详细信息
+#           required:
+#             - patientID
+#           properties:
+#             patientID:
+#               type: integer
+#               description: patientID
+#       - name: Authorization
+#         in: header
+#         type: string
+#         required: true
+#         description: token
+#     responses:
+#       fail:
+#         description: 获取病人信息失败
+#       success:
+#         description: 获取病人信息成功
+#     """
+#     try:
+#         json = request.get_json()
+#         patientID = json['patientID']
+#         patient = _get_patient_id(patientID)
+#         if not patient:
+#             return failReturn("", "getDetail: 获取病人信息失败")
+#         img_list = _get_img_list(patientID)
+#         response_object = {'patient': patient, 'imgs': img_list}
+#         return successReturn(response_object, "getDetail: 获取病人信息成功")
+#     except Exception as e:
+#         return failReturn(format(e), "getDetail出错")
+#
+#
+# @app.route('/api/imgList', methods=['POST'])
+# @login_required
+# @cross_origin()
+# def get_img_list():
+#     """
+#     获取图像信息
+#     :return: json
+#     ---
+#     tags:
+#       - Manager API
+#     parameters:
+#       - name: body
+#         in: body
+#         required: true
+#         schema:
+#           id: 根据id获取病人详细信息
+#           required:
+#             - patientID
+#           properties:
+#             patientID:
+#               type: integer
+#               description: patientID
+#       - name: Authorization
+#         in: header
+#         type: string
+#         required: true
+#         description: token
+#     responses:
+#       fail:
+#         description: 获取图像列表失败
+#       success:
+#         description: 获取图像列表成功
+#     """
+#     try:
+#         patientID = request.get_json()['patientID']
+#         if not patientID:
+#             return failReturn("", "imgList: 获取图像列表失败")
+#         img_list = _get_img_list(patientID)
+#         response_object = {'imgs': img_list}
+#         return successReturn(response_object, "imgList: 获取图像列表成功")
+#     except Exception as e:
+#         return failReturn(format(e), "imgList出错")
+
+
+# def _update_info(id, info, result, state):
+#     """
+#     更新信息
+#     :param id:
+#     :param info:
+#     :return: boolean
+#     """
+#     patient = Patient.query.filter_by(id=id).first()
+#     if not patient:
+#         return False
+#     patient.info = info
+#     patient.result = result
+#     patient.state = state
+#     db.session.commit()
+#     return True
+
+
+# @app.route('/api/updateInfo', methods=['POST'])
+# @login_required
+# @cross_origin()
+# def update_info():
+#     """
+#     更新用户信息
+#     :return: json
+#     ---
+#     tags:
+#       - Manager API
+#     parameters:
+#       - name: body
+#         in: body
+#         required: true
+#         schema:
+#           id: 更新用户信息
+#           required:
+#             - patientID
+#           properties:
+#             patientID:
+#               type: integer
+#               description: patientID
+#             info:
+#               type: string
+#               description: info
+#             result:
+#               type: string
+#               description: result
+#             state:
+#               type: string
+#               description: state
+#       - name: Authorization
+#         in: header
+#         type: string
+#         required: true
+#         description: token
+#     responses:
+#       fail:
+#         description: 更新失败
+#       success:
+#         description: 更新成功
+#     """
+#     try:
+#         json = request.get_json()
+#         patientID = json['patientID']
+#         info = json['info']
+#         result = json['result']
+#         state = json['state']
+#         if not _update_info(patientID, info, result, state):
+#             return failReturn("", "updateInfo: 更新失败")
+#         return successReturn("", "updateInfo: 更新成功")
+#     except Exception as e:
+#         return failReturn(format(e), "updateInfo出错")
 
 
 if __name__ == '__main__':

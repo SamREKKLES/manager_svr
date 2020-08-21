@@ -10,7 +10,7 @@ DB_USER = 'root'
 DB_PASSWORD = 'zj123456'
 DB_HOST = 'cdb-fum3r7xh.gz.tencentcdb.com:10161'
 DB_DB = 'manager'
-SQLALCHEMY_DATABASE_URI = 'mysql://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HOST + '/' + DB_DB
+SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HOST + '/' + DB_DB
 SWAGGER_TITLE = "Manager_svr 管理部分"
 SWAGGER_DESC = "管理部分接口文档"
 

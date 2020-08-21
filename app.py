@@ -98,7 +98,7 @@ class Patient(db.Model):
     cva = db.Column(db.String(255))
     state = db.Column(db.String(255))
     create_time = db.Column(db.DateTime)
-    update_time = db.Column(db.DateTime, default=datetime.now())
+    update_time = db.Column(db.DateTime)
     doctor_id = db.Column(db.Integer)
 
     def __init__(self, username, recordID, state, doctor, age, sex, info, result, cva):
@@ -112,6 +112,7 @@ class Patient(db.Model):
         self.result = result
         self.cva = cva
         self.create_time = datetime.now()
+        self.update_time = self.create_time
 
     def __repr__(self):
         return '<Patient %r>' % self.username
@@ -436,12 +437,12 @@ def _add_patient(name, sex, age, info, result, recordID, state, cva):
         patient.age = age
         patient.cva = cva
         db.session.commit()
-        return "病人已存在，已更新数据"
+        return to_dict(patient), "病人已存在，已更新数据"
     else:
         patient = Patient(name, recordID, state, doctor.id, age, sex, info, result, cva)
         db.session.add(patient)
         db.session.commit()
-        return "病人已成功添加"
+        return to_dict(patient), "病人已成功添加"
 
 
 def _get_patients():
@@ -541,8 +542,9 @@ def add_patient():
         recordID = json['recordID']
         state = json['state']
         cva = json['cva']
-        msg = _add_patient(name, sex, age, info, result, recordID, state, cva)
-        return successReturn("", msg)
+        patient, msg = _add_patient(name, sex, age, info, result, recordID, state, cva)
+        response_object = {'patient': patient}
+        return successReturn(response_object, msg)
     except Exception as e:
         return failReturn(format(e), "addPatient出错")
 

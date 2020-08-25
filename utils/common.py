@@ -1,7 +1,6 @@
 import json
 from datetime import date, datetime
 
-from utils import log
 from utils.log import logError, logInfo
 
 KEY = "zhaohan-manager"

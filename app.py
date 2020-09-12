@@ -324,7 +324,7 @@ def refresh_token():
         if "user_id" not in payload:
             return failReturn("", "refreshToken: 请登陆")
         access_token = generate_access_token(user_id=payload["user_id"])
-        data = {"access_token": access_token.decode("utf-8"), "refresh_token": refreshToken}
+        data = {"access_token": access_token.decode("utf-8")}
         return successReturn(data, "refreshToken: 刷新成功")
     except Exception as e:
         return failReturn(format(e), "refreshToken出错")
@@ -897,17 +897,16 @@ def update_role():
     except Exception as e:
         return failReturn(format(e), "updateRole出错")
 
-
+#todo：各阶段病人分布
 def to_list(patients):
-    res = []
     manNumber = 0
-    totalNumber = 0
+    womanNumber = 0
     for p in patients:
-        totalNumber += 1
         if p.sex == 0:
             manNumber += 1
-        res.append({"sex": "男" if p.sex == 0 else "女", "age": p.age, "cva": p.cva})
-    return res, manNumber, totalNumber
+        elif:
+            womanNumber +=1
+    return manNumber, womanNumber
 
 
 @app.route('/api/patientsAnalyze', methods=['GET'])
@@ -933,9 +932,9 @@ def patients_analyze():
         description: 更新权限成功
     """
     try:
-        patients = db.session.query(Patient).order_by(Patient.update_time).all()
+        patients = db.session.queryder_by(Patient.update_time).all()
         cvaList, manNumber, totalNumber = to_list(patients)
-        response_object = {'manNumber': manNumber, 'totalNumber': totalNumber, 'list': cvaList}
+        response_object = {'manNumber': manNumber, 'womanNumber': womanNumber}
         return successReturn(response_object, "patientsAnalyze: 统计结果分析成功")
     except Exception as e:
         return failReturn(format(e), "patientsAnalyze出错")

@@ -225,19 +225,19 @@ def login():
           properties:
             status:
               type: string
-              description: success.
+              example: success.
             msg:
               type: string
-              description: login 登陆成功
+              example: login 登陆成功
             data:
               type: object
               properties:
                   access_token:
                     type: string
-                    description: access_token
+                    example: access_token
                   refresh_token:
                     type: string
-                    description: refresh_token
+                    example: refresh_token
         description: 登陆成功
       fail:
         schema:
@@ -245,13 +245,13 @@ def login():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: login 用户名或密码错误 or login出错
+              example: login 用户名或密码错误 or login出错
             data:
               type: string
-              description: error或空
+              example: error或空
         description: 用户名或密码错误
     """
     try:
@@ -305,12 +305,13 @@ def register():
           properties:
             status:
               type: string
-              description: success.
+              example: success.
             msg:
               type: string
-              description: 注册成功
+              example: 注册成功
             data:
               type: object
+              example: err
         description: 注册成功
       fail:
         schema:
@@ -318,13 +319,13 @@ def register():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: 注册失败 or register出错
+              example: 注册失败 or register出错
             data:
               type: string
-              description: error
+              example: error
         description: 注册失败
     """
     try:
@@ -367,16 +368,16 @@ def refresh_token():
           properties:
             status:
               type: string
-              description: success.
+              example: success.
             msg:
               type: string
-              description: 刷新成功
+              example: 刷新成功
             data:
               type: object
               properties:
                   access_token:
                     type: string
-                    description: access_token
+                    example: access_token
         description: 成功
       fail:
         schema:
@@ -384,13 +385,13 @@ def refresh_token():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: 参数错误 or 请登陆 or refreshToken出错
+              example: 参数错误 or 请登陆 or refreshToken出错
             data:
               type: string
-              description: error 或 空
+              example: error 或 空
         description: 失败
     """
     try:
@@ -433,12 +434,13 @@ def logout():
           properties:
             status:
               type: string
-              description: success.
+              example: success.
             msg:
               type: string
-              description: 退出登陆
+              example: 退出登陆
             data:
               type: object
+              example: example
         description: 退出登陆
     """
     session.clear()
@@ -479,22 +481,22 @@ def get_user():
           properties:
             status:
               type: string
-              description: success.
+              example: success.
             msg:
               type: string
-              description: 获取信息成功
+              example: 获取信息成功
             data:
               type: object
               properties:
                   username:
                     type: string
-                    description: username
+                    example: username
                   id:
                     type: integer
-                    description: id
+                    example: id
                   userType:
                     type: string
-                    description: userType
+                    example: userType
         description: 成功
       fail:
         schema:
@@ -502,13 +504,13 @@ def get_user():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: 获取信息失败 or getUser出错
+              example: 获取信息失败 or getUser出错
             data:
               type: string
-              description: error 或 空
+              example: error 或 空
         description: 失败
     """
     try:
@@ -638,10 +640,10 @@ def add_patient():
           properties:
             status:
               type: string
-              description: success.
+              example: success.
             msg:
               type: string
-              description: 病人已成功添加 or 病人已存在，已更新数据
+              example: 病人已成功添加 or 病人已存在，已更新数据
             data:
               type: object
               properties:
@@ -650,30 +652,40 @@ def add_patient():
                     properties:
                         id:
                             type: integer
+                            example: 1
                         doctor:
                             type: string
+                            example: zj
                         name:
                             type: string
+                            example: zj
                         sex:
                             type: string
+                            example: 男
                         recordID:
                             type: string
+                            example: 123546
                         age:
-                            type: integer
+                            type: string
+                            example: 21
                         cva:
                             type: string
+                            example: 血栓性脑埂塞
                         info:
                             type: string
+                            example: 信息
                         state:
                             type: string
+                            example: 急性期
                         result:
                             type: string
+                            example: 结果
                         updateTime:
                             type: string
-                            format: date-time
+                            example: date-time
                         createTime:
                             type: string
-                            format: date-time
+                            example: date-time
                     description: patient
         description: 成功
       fail:
@@ -682,13 +694,13 @@ def add_patient():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: addPatient出错
+              example: addPatient出错
             data:
               type: string
-              description: error
+              example: error
         description: 失败
     """
     try:
@@ -731,17 +743,54 @@ def get_patients():
           properties:
             status:
               type: string
-              description: success.
+              example: success.
             msg:
               type: string
-              description: 获取病人列表成功
+              example: 获取病人列表成功
             data:
               type: object
               properties:
-                  patientList:
-                    type: list
-                    example: [{id,doctor,name,sex,recordID,age,cva,info,state,result,updateTime,createTime},
-                    {id,doctor,name,sex,recordID,age,cva,info,state,result,updateTime,createTime}]
+                  userInfo:
+                    type: array
+                    items:
+                        type: object
+                        properties:
+                            id:
+                                type: integer
+                                example: 1
+                            doctor:
+                                type: string
+                                example: zj
+                            name:
+                                type: string
+                                example: zj
+                            sex:
+                                type: string
+                                example: 男
+                            recordID:
+                                type: string
+                                example: 123546
+                            age:
+                                type: string
+                                example: 21
+                            cva:
+                                type: string
+                                example: 血栓性脑埂塞
+                            info:
+                                type: string
+                                example: 信息
+                            state:
+                                type: string
+                                example: 急性期
+                            result:
+                                type: string
+                                example: 结果
+                            updateTime:
+                                type: string
+                                example: date-time
+                            createTime:
+                                type: string
+                                example: date-time
         description: 成功
       fail:
         schema:
@@ -749,13 +798,13 @@ def get_patients():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: getPatients出错
+              example: getPatients出错
             data:
               type: string
-              description: error
+              example: error
         description: 失败
     """
     try:
@@ -823,36 +872,42 @@ def get_patient_by_id():
             data:
               type: object
               properties:
-                  patient:
-                    type: object
-                    properties:
-                        id:
-                            type: integer
-                        doctor:
-                            type: string
-                        name:
-                            type: string
-                        sex:
-                            type: string
-                        recordID:
-                            type: string
-                        age:
-                            type: integer
-                        cva:
-                            type: string
-                        info:
-                            type: string
-                        state:
-                            type: string
-                        result:
-                            type: string
-                        updateTime:
-                            type: string
-                            format: date-time
-                        createTime:
-                            type: string
-                            format: date-time
-                    description: patient
+                id:
+                    type: integer
+                    example: 1
+                doctor:
+                    type: string
+                    example: zj
+                name:
+                    type: string
+                    example: zj
+                sex:
+                    type: string
+                    example: 男
+                recordID:
+                    type: string
+                    example: 123546
+                age:
+                    type: string
+                    example: 21
+                cva:
+                    type: string
+                    example: 血栓性脑埂塞
+                info:
+                    type: string
+                    example: 信息
+                state:
+                    type: string
+                    example: 急性期
+                result:
+                    type: string
+                    example: 结果
+                updateTime:
+                    type: string
+                    example: date-time
+                createTime:
+                    type: string
+                    example: date-time
         description: 成功
       fail:
         schema:
@@ -860,13 +915,13 @@ def get_patient_by_id():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: getPatientByID出错 or 获取病人失败
+              example: getPatientByID出错 or 获取病人失败
             data:
               type: string
-              description: error
+              example: error
         description: 失败
     """
     try:
@@ -945,31 +1000,40 @@ def get_patient_by_name():
                     properties:
                         id:
                             type: integer
+                            example: 1
                         doctor:
                             type: string
+                            example: zj
                         name:
                             type: string
+                            example: zj
                         sex:
                             type: string
+                            example: 男
                         recordID:
                             type: string
+                            example: 123546
                         age:
-                            type: integer
+                            type: string
+                            example: 21
                         cva:
                             type: string
+                            example: 血栓性脑埂塞
                         info:
                             type: string
+                            example: 信息
                         state:
                             type: string
+                            example: 急性期
                         result:
                             type: string
+                            example: 结果
                         updateTime:
                             type: string
-                            format: date-time
+                            example: date-time
                         createTime:
                             type: string
-                            format: date-time
-                    description: patient
+                            example: date-time
         description: 成功
       fail:
         schema:
@@ -977,13 +1041,13 @@ def get_patient_by_name():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: getPatientByName出错 or 获取病人失败
+              example: getPatientByName出错 or 获取病人失败
             data:
               type: string
-              description: error
+              example: error
         description: 失败
     """
     try:
@@ -1046,16 +1110,27 @@ def user_info():
           properties:
             status:
               type: string
-              description: success.
+              example: success.
             msg:
               type: string
-              description: 获取用户列表成功
+              example: 获取用户列表成功
             data:
               type: object
               properties:
                   userInfo:
-                    type: list
-                    example: [{id, name, role},{id, name, role}]
+                    type: array
+                    items:
+                        type: object
+                        properties:
+                            id:
+                                type: integer
+                                example: 1
+                            name:
+                                type: string
+                                example: zj
+                            role:
+                                type: string
+                                example: 管理员
         description: 成功
       fail:
         schema:
@@ -1063,13 +1138,13 @@ def user_info():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: userInfo出错 or 权限不足
+              example: userInfo出错 or 权限不足
             data:
               type: string
-              description: error
+              example: error
         description: 失败
     """
     try:
@@ -1116,10 +1191,10 @@ def user_detail():
           properties:
             status:
               type: string
-              description: success.
+              example: success.
             msg:
               type: string
-              description: 获取用户详细信息成功
+              example: 获取用户详细信息成功
             data:
               type: object
               properties:
@@ -1128,10 +1203,13 @@ def user_detail():
                       properties:
                           name:
                               type: string
+                              example: zj
                           realname:
                               type: string
+                              example: zj
                           role:
                               type: string
+                              example: 管理员
         description: 成功
       fail:
         schema:
@@ -1139,13 +1217,13 @@ def user_detail():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: userDetail出错 or 用户不存在
+              example: userDetail出错 or 用户不存在
             data:
               type: string
-              description: error
+              example: error
         description: 失败
     """
     try:
@@ -1198,12 +1276,13 @@ def update_role():
           properties:
             status:
               type: string
-              description: success.
+              example: success.
             msg:
               type: string
-              description: 更新权限成功
+              example: 更新权限成功
             data:
               type: string
+              example: err
         description: 成功
       fail:
         schema:
@@ -1211,13 +1290,13 @@ def update_role():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: 权限不足 or 用户不存在 or updateRole出错
+              example: 权限不足 or 用户不存在 or updateRole出错
             data:
               type: string
-              description: error
+              example: error
         description: 失败
     """
     try:
@@ -1271,17 +1350,64 @@ def patients_analyze():
           properties:
             status:
               type: string
-              description: success.
+              example: success.
             msg:
               type: string
-              description: 统计结果分析成功
+              example: 统计结果分析成功
             data:
               type: object
               properties:
-                  manNumber:
-                      type: string
-                  womanNumber:
-                      type: string
+                sex_number:
+                    type: object
+                    properties:
+                      manNumber:
+                          type: integer
+                          example: 1
+                      womanNumber:
+                          type: integer
+                          example: 2
+                phase:
+                    type: object
+                    properties:
+                      亚急性期:
+                          type: integer
+                          example: 1
+                      急性期:
+                          type: integer
+                          example: 2
+                      慢性期:
+                          type: integer
+                          example: 2
+                      超急性期:
+                          type: integer
+                          example: 2
+                age:
+                    type: object
+                    properties:
+                      "<20":
+                          type: integer
+                          example: 1
+                      20-30:
+                          type: integer
+                          example: 2
+                      30-40:
+                          type: integer
+                          example: 2
+                      40-50:
+                          type: integer
+                          example: 2
+                      50-60:
+                          type: integer
+                          example: 2
+                      60-70:
+                          type: integer
+                          example: 2
+                      70-80:
+                          type: integer
+                          example: 2
+                      ">80":
+                          type: integer
+                          example: 2
         description: 成功
       fail:
         schema:
@@ -1289,13 +1415,13 @@ def patients_analyze():
           properties:
             status:
               type: string
-              description: fail.
+              example: fail.
             msg:
               type: string
-              description: patientsAnalyze出错
+              example: patientsAnalyze出错
             data:
               type: string
-              description: error
+              example: error
         description: 失败
     """
     try:

@@ -7,7 +7,7 @@ from utils.auths import *
 from flask import Flask, request, session
 from flask_cors import CORS, cross_origin
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import null, func
+from sqlalchemy import null, func, and_
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField
@@ -219,10 +219,40 @@ def login():
               type: string
               description: 密码
     responses:
-      fail:
-        description: 用户名或密码错误
       success:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: login 登陆成功
+            data:
+              type: object
+              properties:
+                  access_token:
+                    type: string
+                    description: access_token
+                  refresh_token:
+                    type: string
+                    description: refresh_token
         description: 登陆成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: login 用户名或密码错误 or login出错
+            data:
+              type: string
+              description: error或空
+        description: 用户名或密码错误
     """
     try:
         user_data = request.get_json()
@@ -269,10 +299,33 @@ def register():
               type: string
               description: 真实姓名
     responses:
-      fail:
-        description: 注册失败
       success:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 注册成功
+            data:
+              type: object
         description: 注册成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: 注册失败 or register出错
+            data:
+              type: string
+              description: error
+        description: 注册失败
     """
     try:
         user_data = request.get_json()
@@ -308,10 +361,37 @@ def refresh_token():
               type: string
               description: refresh_token
     responses:
-      fail:
-        description: 注册失败
       success:
-        description: 注册成功
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 刷新成功
+            data:
+              type: object
+              properties:
+                  access_token:
+                    type: string
+                    description: access_token
+        description: 成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: 参数错误 or 请登陆 or refreshToken出错
+            data:
+              type: string
+              description: error 或 空
+        description: 失败
     """
     try:
         user_data = request.get_json()
@@ -348,6 +428,17 @@ def logout():
         description: token
     responses:
       success:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 退出登陆
+            data:
+              type: object
         description: 退出登陆
     """
     session.clear()
@@ -382,10 +473,43 @@ def get_user():
         required: true
         description: token
     responses:
-      fail:
-        description: 注册失败
       success:
-        description: 注册成功
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 获取信息成功
+            data:
+              type: object
+              properties:
+                  username:
+                    type: string
+                    description: username
+                  id:
+                    type: integer
+                    description: id
+                  userType:
+                    type: string
+                    description: userType
+        description: 成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: 获取信息失败 or getUser出错
+            data:
+              type: string
+              description: error 或 空
+        description: 失败
     """
     try:
         username, id, userType = _get_username()
@@ -459,25 +583,6 @@ def _get_patients():
         return to_dicts(patients)
 
 
-def _del_patient(id):
-    """
-    删除病人
-    :param id:
-    :return: boolean
-    """
-    patient = Patient.query.filter_by(id=id).first()
-    if not patient:
-        return False
-    img_list = Img.query.filter_by(patient_id=patient.id).all()
-    db.session.delete(patient)
-    if img_list:
-        for item in img_list:
-            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], item.filename))
-            db.session.delete(item)
-    db.session.commit()
-    return True
-
-
 @app.route('/api/addPatient', methods=['POST'])
 @login_required
 @cross_origin()
@@ -527,10 +632,64 @@ def add_patient():
         required: true
         description: token
     responses:
-      fail:
-        description: 添加病人失败
       success:
-        description: 成加病人成功
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 病人已成功添加 or 病人已存在，已更新数据
+            data:
+              type: object
+              properties:
+                  patient:
+                    type: object
+                    properties:
+                        id:
+                            type: integer
+                        doctor:
+                            type: string
+                        name:
+                            type: string
+                        sex:
+                            type: string
+                        recordID:
+                            type: string
+                        age:
+                            type: integer
+                        cva:
+                            type: string
+                        info:
+                            type: string
+                        state:
+                            type: string
+                        result:
+                            type: string
+                        updateTime:
+                            type: string
+                            format: date-time
+                        createTime:
+                            type: string
+                            format: date-time
+                    description: patient
+        description: 成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: addPatient出错
+            data:
+              type: string
+              description: error
+        description: 失败
     """
     try:
         json = request.get_json()
@@ -566,10 +725,38 @@ def get_patients():
         required: true
         description: token
     responses:
-      fail:
-        description: 获取病人列表失败
       success:
-        description: 获取病人列表成功
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 获取病人列表成功
+            data:
+              type: object
+              properties:
+                  patientList:
+                    type: list
+                    example: [{id,doctor,name,sex,recordID,age,cva,info,state,result,updateTime,createTime},
+                    {id,doctor,name,sex,recordID,age,cva,info,state,result,updateTime,createTime}]
+        description: 成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: getPatients出错
+            data:
+              type: string
+              description: error
+        description: 失败
     """
     try:
         patientList = _get_patients()
@@ -623,10 +810,64 @@ def get_patient_by_id():
         required: true
         description: token
     responses:
-      fail:
-        description: 获取病人失败
       success:
-        description: 获取病人成功
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 获取病人成功
+            data:
+              type: object
+              properties:
+                  patient:
+                    type: object
+                    properties:
+                        id:
+                            type: integer
+                        doctor:
+                            type: string
+                        name:
+                            type: string
+                        sex:
+                            type: string
+                        recordID:
+                            type: string
+                        age:
+                            type: integer
+                        cva:
+                            type: string
+                        info:
+                            type: string
+                        state:
+                            type: string
+                        result:
+                            type: string
+                        updateTime:
+                            type: string
+                            format: date-time
+                        createTime:
+                            type: string
+                            format: date-time
+                    description: patient
+        description: 成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: getPatientByID出错 or 获取病人失败
+            data:
+              type: string
+              description: error
+        description: 失败
     """
     try:
         json = request.get_json()
@@ -646,7 +887,9 @@ def _get_patient_name(username):
         :param username:
         :return: patient
         """
-    patient = Patient.query.filter_by(username=username).first()
+    patient = Patient.query.filter(
+        Patient.username.like('%' + username + '%') if username is not None else ""
+    ).first()
     if patient is None:
         return None
     doctor = _get_current_user()
@@ -684,10 +927,64 @@ def get_patient_by_name():
         required: true
         description: token
     responses:
-      fail:
-        description: 获取病人失败
       success:
-        description: 获取病人成功
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 获取病人成功
+            data:
+              type: object
+              properties:
+                  patient:
+                    type: object
+                    properties:
+                        id:
+                            type: integer
+                        doctor:
+                            type: string
+                        name:
+                            type: string
+                        sex:
+                            type: string
+                        recordID:
+                            type: string
+                        age:
+                            type: integer
+                        cva:
+                            type: string
+                        info:
+                            type: string
+                        state:
+                            type: string
+                        result:
+                            type: string
+                        updateTime:
+                            type: string
+                            format: date-time
+                        createTime:
+                            type: string
+                            format: date-time
+                    description: patient
+        description: 成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: getPatientByName出错 or 获取病人失败
+            data:
+              type: string
+              description: error
+        description: 失败
     """
     try:
         json = request.get_json()
@@ -699,48 +996,6 @@ def get_patient_by_name():
         return successReturn(response_object, "getPatientByName: 获取病人成功")
     except Exception as e:
         return failReturn(format(e), "getPatientByName出错")
-
-
-@app.route('/api/delPatient', methods=['POST'])
-@login_required
-@cross_origin()
-def del_patient():
-    """
-    删除病人
-    :return: json
-    ---
-    tags:
-      - Manager API
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          id: 删除病人
-          required:
-            - patientID
-          properties:
-            patientID:
-              type: integer
-              description: patientID
-      - name: Authorization
-        in: header
-        type: string
-        required: true
-        description: token
-    responses:
-      fail:
-        description: 删除失败
-      success:
-        description: 删除成功
-    """
-    try:
-        patientID = request.get_json()['patientID']
-        if not _del_patient(patientID):
-            return failReturn("", "delPatient: 删除失败")
-        return successReturn("", "delPatient: 删除成功")
-    except Exception as e:
-        return failReturn(format(e), "delPatient出错")
 
 
 def _userType(u):
@@ -763,8 +1018,8 @@ def _statistics():
     users = User.query.all()
     res = []
     for u in users:
-        role = _userType(u)
-        res.append({"id": u.id, "name": u.realname, "role": role})
+        userType = _userType(u)
+        res.append({"id": u.id, "name": u.realname, "role": userType})
     return res
 
 
@@ -785,10 +1040,37 @@ def user_info():
         required: true
         description: token
     responses:
-      fail:
-        description: 权限不足
       success:
-        description: 获取用户列表成功
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 获取用户列表成功
+            data:
+              type: object
+              properties:
+                  userInfo:
+                    type: list
+                    example: [{id, name, role},{id, name, role}]
+        description: 成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: userInfo出错 or 权限不足
+            data:
+              type: string
+              description: error
+        description: 失败
     """
     try:
         res = _statistics()
@@ -828,10 +1110,43 @@ def user_detail():
         required: true
         description: token
     responses:
-      fail:
-        description: 用户不存在
       success:
-        description: 获取用户详细信息成功
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 获取用户详细信息成功
+            data:
+              type: object
+              properties:
+                  userInfo:
+                      type: object
+                      properties:
+                          name:
+                              type: string
+                          realname:
+                              type: string
+                          role:
+                              type: string
+        description: 成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: userDetail出错 or 用户不存在
+            data:
+              type: string
+              description: error
+        description: 失败
     """
     try:
         userID = request.get_json()['userID']
@@ -877,10 +1192,33 @@ def update_role():
         required: true
         description: token
     responses:
-      fail:
-        description: 权限不足或用户不存在
       success:
-        description: 更新权限成功
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 更新权限成功
+            data:
+              type: string
+        description: 成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: 权限不足 or 用户不存在 or updateRole出错
+            data:
+              type: string
+              description: error
+        description: 失败
     """
     try:
         doctor = _get_current_user()
@@ -897,15 +1235,16 @@ def update_role():
     except Exception as e:
         return failReturn(format(e), "updateRole出错")
 
-#todo：各阶段病人分布
+
+# todo：各阶段病人分布
 def to_list(patients):
     manNumber = 0
     womanNumber = 0
     for p in patients:
         if p.sex == 0:
             manNumber += 1
-        elif:
-            womanNumber +=1
+        else:
+            womanNumber += 1
     return manNumber, womanNumber
 
 
@@ -926,229 +1265,68 @@ def patients_analyze():
         required: true
         description: token
     responses:
-      fail:
-        description: 权限不足或用户不存在
       success:
-        description: 更新权限成功
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: success.
+            msg:
+              type: string
+              description: 统计结果分析成功
+            data:
+              type: object
+              properties:
+                  manNumber:
+                      type: string
+                  womanNumber:
+                      type: string
+        description: 成功
+      fail:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: fail.
+            msg:
+              type: string
+              description: patientsAnalyze出错
+            data:
+              type: string
+              description: error
+        description: 失败
     """
     try:
-        patients = db.session.queryder_by(Patient.update_time).all()
-        cvaList, manNumber, totalNumber = to_list(patients)
-        response_object = {'manNumber': manNumber, 'womanNumber': womanNumber}
+        # 男女比例
+        db_sex = db.session.query(func.count(Patient.id)).group_by(Patient.sex).all()
+        manNumber = db_sex[0][0]
+        womanNumber = db_sex[1][0]
+        sex_number = {"manNumber": manNumber, "womanNumber": womanNumber}
+        # 疾病阶段
+        db_state = db.session.query(func.count(Patient.id)).group_by(Patient.state).all()
+        subacute_phase = db_state[0][0]  # 亚急性期
+        acute_phase = db_state[1][0]  # 急性期
+        chronic_phase = db_state[2][0]  # 慢性期
+        hyperacute_phase = db_state[3][0]  # 超急性期
+        phase = {"亚急性期": subacute_phase, "急性期": acute_phase, "慢性期": chronic_phase, "超急性期":hyperacute_phase}
+        # 年龄分布
+        age_1 = db.session.query(func.count(Patient.id)).filter(Patient.age < 20).all()
+        age_2 = db.session.query(func.count(Patient.id)).filter(and_(20 <= Patient.age, Patient.age < 30)).all()
+        age_3 = db.session.query(func.count(Patient.id)).filter(and_(30 <= Patient.age, Patient.age < 40)).all()
+        age_4 = db.session.query(func.count(Patient.id)).filter(and_(40 <= Patient.age, Patient.age < 50)).all()
+        age_5 = db.session.query(func.count(Patient.id)).filter(and_(50 <= Patient.age, Patient.age < 60)).all()
+        age_6 = db.session.query(func.count(Patient.id)).filter(and_(60 <= Patient.age, Patient.age < 70)).all()
+        age_7 = db.session.query(func.count(Patient.id)).filter(and_(70 <= Patient.age, Patient.age < 80)).all()
+        age_8 = db.session.query(func.count(Patient.id)).filter(80 <= Patient.age).all()
+        total = db.session.query(func.count(Patient.id)).all()
+        age = {"<20": age_1[0][0], "20-30": age_2[0][0], "30-40": age_3[0][0], "40-50": age_4[0][0],
+               "50-60": age_5[0][0], "60-70": age_6[0][0], "70-80": age_7[0][0], ">80": age_8[0][0], "total": total[0][0]}
+        response_object = {'sex_number': sex_number, 'phase': phase, "age": age}
         return successReturn(response_object, "patientsAnalyze: 统计结果分析成功")
     except Exception as e:
         return failReturn(format(e), "patientsAnalyze出错")
-
-
-# @app.route('/api/series', methods=['GET'])
-# @cross_origin()
-# def series():
-#     """
-#     生成随机uuid
-#     :return:
-#     ---
-#     tags:
-#       - Manager API
-#     parameter:
-#       - name: Authorization
-#         in: header
-#         type: string
-#         required: true
-#         description: token
-#     responses:
-#       success:
-#         description: 生成随机uuid
-#     """
-#     try:
-#         node = uuid.getnode()
-#         mac = uuid.UUID(int=node).hex[-12:]
-#         response_object = {'mac': mac}
-#         return successReturn(response_object, "series: 生成随机uuid")
-#     except Exception as e:
-#         return failReturn(format(e), "series出错")
-
-
-# def _get_img_list(id):
-#     """
-#     获取imgList
-#     :param id:
-#     :return: res
-#     """
-#     res = []
-#     img_list = Img.query.filter_by(patient_id=id).order_by("timestamp").all()
-#     for item in img_list:
-#         res.append(
-#             {
-#                 "uploadname": item.uploadname,
-#                 "timestamp": item.timestamp,
-#                 "type": item.type,
-#                 "filename": item.filename,
-#                 "disabled": False
-#             }
-#         )
-#     return res
-#
-#
-# @app.route('/api/getDetail', methods=['POST'])
-# @login_required
-# @cross_origin()
-# def get_detail():
-#     """
-#     获取病人详细信息
-#     :return: json
-#     ---
-#     tags:
-#       - Manager API
-#     parameters:
-#       - name: body
-#         in: body
-#         required: true
-#         schema:
-#           id: 根据id获取病人详细信息
-#           required:
-#             - patientID
-#           properties:
-#             patientID:
-#               type: integer
-#               description: patientID
-#       - name: Authorization
-#         in: header
-#         type: string
-#         required: true
-#         description: token
-#     responses:
-#       fail:
-#         description: 获取病人信息失败
-#       success:
-#         description: 获取病人信息成功
-#     """
-#     try:
-#         json = request.get_json()
-#         patientID = json['patientID']
-#         patient = _get_patient_id(patientID)
-#         if not patient:
-#             return failReturn("", "getDetail: 获取病人信息失败")
-#         img_list = _get_img_list(patientID)
-#         response_object = {'patient': patient, 'imgs': img_list}
-#         return successReturn(response_object, "getDetail: 获取病人信息成功")
-#     except Exception as e:
-#         return failReturn(format(e), "getDetail出错")
-#
-#
-# @app.route('/api/imgList', methods=['POST'])
-# @login_required
-# @cross_origin()
-# def get_img_list():
-#     """
-#     获取图像信息
-#     :return: json
-#     ---
-#     tags:
-#       - Manager API
-#     parameters:
-#       - name: body
-#         in: body
-#         required: true
-#         schema:
-#           id: 根据id获取病人详细信息
-#           required:
-#             - patientID
-#           properties:
-#             patientID:
-#               type: integer
-#               description: patientID
-#       - name: Authorization
-#         in: header
-#         type: string
-#         required: true
-#         description: token
-#     responses:
-#       fail:
-#         description: 获取图像列表失败
-#       success:
-#         description: 获取图像列表成功
-#     """
-#     try:
-#         patientID = request.get_json()['patientID']
-#         if not patientID:
-#             return failReturn("", "imgList: 获取图像列表失败")
-#         img_list = _get_img_list(patientID)
-#         response_object = {'imgs': img_list}
-#         return successReturn(response_object, "imgList: 获取图像列表成功")
-#     except Exception as e:
-#         return failReturn(format(e), "imgList出错")
-
-
-# def _update_info(id, info, result, state):
-#     """
-#     更新信息
-#     :param id:
-#     :param info:
-#     :return: boolean
-#     """
-#     patient = Patient.query.filter_by(id=id).first()
-#     if not patient:
-#         return False
-#     patient.info = info
-#     patient.result = result
-#     patient.state = state
-#     db.session.commit()
-#     return True
-
-
-# @app.route('/api/updateInfo', methods=['POST'])
-# @login_required
-# @cross_origin()
-# def update_info():
-#     """
-#     更新用户信息
-#     :return: json
-#     ---
-#     tags:
-#       - Manager API
-#     parameters:
-#       - name: body
-#         in: body
-#         required: true
-#         schema:
-#           id: 更新用户信息
-#           required:
-#             - patientID
-#           properties:
-#             patientID:
-#               type: integer
-#               description: patientID
-#             info:
-#               type: string
-#               description: info
-#             result:
-#               type: string
-#               description: result
-#             state:
-#               type: string
-#               description: state
-#       - name: Authorization
-#         in: header
-#         type: string
-#         required: true
-#         description: token
-#     responses:
-#       fail:
-#         description: 更新失败
-#       success:
-#         description: 更新成功
-#     """
-#     try:
-#         json = request.get_json()
-#         patientID = json['patientID']
-#         info = json['info']
-#         result = json['result']
-#         state = json['state']
-#         if not _update_info(patientID, info, result, state):
-#             return failReturn("", "updateInfo: 更新失败")
-#         return successReturn("", "updateInfo: 更新成功")
-#     except Exception as e:
-#         return failReturn(format(e), "updateInfo出错")
 
 
 if __name__ == '__main__':
@@ -1158,4 +1336,4 @@ if __name__ == '__main__':
 
 
     app.after_request(after_request)
-    app.run(debug=True, threaded=True, host='127.0.0.1', port=5050)
+    app.run(debug=True, threaded=True, host='0.0.0.0', port=5050)

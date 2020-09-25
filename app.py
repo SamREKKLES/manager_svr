@@ -150,7 +150,7 @@ class User(db.Model):
 # LoginForm 登陆表单
 class LoginForm(FlaskForm):
     username = StringField('Username', validators=[Length(max=64)])
-    password = PasswordField('Password', validators=[Length(6, 16)])
+    password = PasswordField('Password', validators=[Length(1, 16)])
 
     def validate_username(self, field):
         if not self.get_user():
